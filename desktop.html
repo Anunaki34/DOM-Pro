@@ -4109,9 +4109,11 @@ function groupCandles(rows, intervalMin) {
   let cur = null;
   for (const r of rows) {
     const bucket = Math.floor(new Date(r.candle_time).getTime() / intervalMs) * intervalMs;
+    // Fix 1: explicitly set startTime so the comparison works
     if (!cur || cur.startTime !== bucket) {
       if (cur) candles.push(cur);
       cur = {
+        startTime: bucket,          // needed for grouping check
         candle_time: new Date(bucket).toISOString(),
         open: r.open,
         high: r.high,
@@ -4121,9 +4123,10 @@ function groupCandles(rows, intervalMin) {
         buy_vol: 0,
         sell_vol: 0,
         trade_count: 0,
-        levels: {}
+        levels: {}                  // temporary map keyed by real price
       };
     }
+    // Aggregate OHLCV
     cur.high = Math.max(cur.high, r.high);
     cur.low = Math.min(cur.low, r.low);
     cur.close = r.close;
@@ -4131,16 +4134,22 @@ function groupCandles(rows, intervalMin) {
     cur.buy_vol += Number(r.buy_vol);
     cur.sell_vol += Number(r.sell_vol);
     cur.trade_count += Number(r.trade_count);
+
+    // Fix 2: merge footprint levels – use 'b'/'s' for buy/sell and convert 'p' to real price
     if (r.levels && Array.isArray(r.levels)) {
       for (const l of r.levels) {
-        const price = Number(l.price);
+        const price = Number(l.p) / 10;    // p is price × 10 (e.g. 695122 → 69512.2)
+        const buy  = Number(l.b) || 0;
+        const sell = Number(l.s) || 0;
         if (!cur.levels[price]) cur.levels[price] = { buy: 0, sell: 0 };
-        cur.levels[price].buy += Number(l.buy);
-        cur.levels[price].sell += Number(l.sell);
+        cur.levels[price].buy += buy;
+        cur.levels[price].sell += sell;
       }
     }
   }
   if (cur) candles.push(cur);
+
+  // Convert the levels map back to the sorted array the dashboard expects
   return candles.map(c => ({
     ...c,
     levels: Object.entries(c.levels)
