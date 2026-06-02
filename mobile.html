@@ -4183,8 +4183,6 @@ function hideHistBanner(msg, ok) {
 
 async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
   const headers = {
-    'apikey':        SUPABASE_KEY,
-    'Authorization': 'Bearer ' + SUPABASE_KEY,
     'Content-Type':  'application/json'
   };
   const body = JSON.stringify({
