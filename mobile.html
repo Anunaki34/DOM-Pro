@@ -4194,7 +4194,7 @@ async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
     p_tick_size:    tickSz
   });
   const resp = await fetch(
-    `${SUPABASE_URL}/rest/v1/rpc/get_candles`,
+    `${SUPABASE_URL}/rpc/get_candles`,
     { method: 'POST', headers, body }
   );
   if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
