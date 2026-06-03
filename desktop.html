@@ -4333,7 +4333,74 @@ setInterval(() => {
     tradeEventBuffer = [];
   }
 }, TRADE_BUFFER_MS);
+// ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
+// Fetches raw trades from Aiven via the PostgREST REST API.
+// Uses pagination (Range headers) and optional localStorage caching.
+async function fetchSupabaseTrades() {
+  const cutoffMs  = Date.now() - HIST_LOOKBACK_MS;
+  const cutoffISO = new Date(cutoffMs).toISOString();
 
+  const headers = {
+    'Content-Type': 'application/json'
+  };
+
+  let allRows = [];
+  let page = 0;
+  let done = false;
+
+  // Try to load cached trades from localStorage (if available)
+  try {
+    const raw = localStorage.getItem(LS_TRADE_CACHE);
+    const ts  = localStorage.getItem(LS_TRADE_CACHE_TS);
+    if (raw && ts) {
+      const cached = JSON.parse(raw);
+      const cachedCutoff = new Date(Date.now() - HIST_LOOKBACK_MS).toISOString();
+      const freshCache = cached.filter(r => r.ts >= cachedCutoff);
+      if (freshCache.length) {
+        allRows = freshCache;
+        console.log(`[fetchSupabaseTrades] Loaded ${allRows.length} trades from cache`);
+        return allRows;   // use cache and skip network call
+      }
+    }
+  } catch (e) { /* ignore cache errors */ }
+
+  while (!done && page < HIST_MAX_PAGES) {
+    const from = page * HIST_PAGE_SIZE;
+    const to   = from + HIST_PAGE_SIZE - 1;
+
+    const url = `${SUPABASE_URL}/trades?select=ts,price,qty,is_sell&order=ts.asc&ts=gte.${cutoffISO}`;
+    const resp = await fetch(url, {
+      headers: {
+        ...headers,
+        'Range': `${from}-${to}`,
+        'Range-Unit': 'items',
+        'Prefer': 'count=none'
+      }
+    });
+
+    if (!resp.ok) {
+      console.warn(`[fetchSupabaseTrades] HTTP ${resp.status} on page ${page}`);
+      break;
+    }
+
+    const data = await resp.json();
+    if (!data.length) { done = true; break; }
+
+    allRows = allRows.concat(data);
+    page++;
+
+    if (data.length < HIST_PAGE_SIZE) { done = true; }
+  }
+
+  // Save fetched rows to localStorage for next load (optional)
+  try {
+    localStorage.setItem(LS_TRADE_CACHE, JSON.stringify(allRows.slice(-50000)));
+    localStorage.setItem(LS_TRADE_CACHE_TS, new Date().toISOString());
+  } catch (e) { /* quota exceeded, ignore */ }
+
+  return allRows;
+}
+  
 // ── MAIN BOOTSTRAP (async, phased) ───────────────────────────────────────
 async function bootstrap() {
 
