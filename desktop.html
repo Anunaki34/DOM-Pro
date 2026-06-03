@@ -1596,8 +1596,9 @@ function renderCandles() {
     ctx.beginPath(); ctx.moveTo(boxX + boxW, yClose); ctx.lineTo(boxX + boxW - tickLen, yClose); ctx.stroke();
 
     // ── Time label ───────────────────────────────────────────────────────
-    const d = new Date(candle.startTime);
-    const timeLabel = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+const d = new Date(candle.startTime);
+const localHours = (d.getUTCHours() + 8) % 24;  // UTC+8 for Manila
+const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes().toString().padStart(2,'0');
     const timeLabelY = Math.min(h - 14, yLow + 9);
     ctx.fillStyle = fpLightMode ? 'rgba(80,70,50,0.80)' : 'rgba(80,105,130,0.85)';
     ctx.font = '7px monospace'; ctx.textAlign = 'center';
@@ -3707,7 +3708,9 @@ document.getElementById('clearChartData').onclick = clearPersistedData;
 
 // ── logCandleToPeriodLog — persist-patched version ───────────────────────
 function logCandleToPeriodLog(candle) {
-  const time = new Date(candle.startTime), timeLabel = time.getHours().toString().padStart(2,'0')+":"+time.getMinutes().toString().padStart(2,'0');
+const d = new Date(candle.startTime);
+const localHours = (d.getUTCHours() + 8) % 24;  // UTC+8 for Manila
+const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes().toString().padStart(2,'0');
   // Guard: skip if this candle's startTime is already in fpLog (prevents duplicate on reload+seed)
   if (fpLog.some(e => e.startTime === candle.startTime)) return;
   const entry = { timeLabel, startTime: candle.startTime, lo: candle.low.toFixed(tickDecimals), hi: candle.high.toFixed(tickDecimals), netDelta: candle.buyVol-candle.sellVol, buy: candle.buyVol, sell: candle.sellVol, open: candle.open, close: candle.close, volume: candle.volume, quiet: false };
