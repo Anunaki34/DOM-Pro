@@ -1097,6 +1097,18 @@ function changeCandleInterval(newVal) {
   timeframeChangeActive = true; tfChangeCountdown = candleVisibleCount*2;
   // Clear persisted candles — they belong to the old interval and would misalign on reload
   try { localStorage.removeItem(LS_CANDLES); localStorage.removeItem(LS_FPLOG); } catch(e) {}
+    // ── Re‑fetch candles with the new interval ─────────────────────────
+  (async () => {
+    const fromMs = Date.now() - HIST_LOOKBACK_MS;
+    const toMs   = Date.now();
+    const ts     = tickSize || 0.1;
+    try {
+      const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
+      seedHistoricalCandles(rows);
+    } catch (e) {
+      console.warn('Interval change re‑fetch failed:', e);
+    }
+  })();
 }
 function updateCandleWithTrade(price, qty, isSell) {
   const boundary = alignToCandleBoundary(candleIntervalMin);
