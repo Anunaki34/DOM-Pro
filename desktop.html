@@ -4489,12 +4489,6 @@ async function bootstrap() {
   seedOrderBook();
   connectDepth();
 
-  // ── Phase 4: fetch pre-aggregated candles from Supabase RPC ────────────
-  setHistProgress(7, 'Fetching candle history from Supabase…');
-  let candleRows = [];
-     const fromMs = Date.now() - HIST_LOOKBACK_MS;
-    const toMs   = Date.now();
-    const ts     = tickSize || 0.1;
        // ── Phase 4: fetch pre-aggregated candles from Aiven RPC ──────────
     let candleRows = [];
     try {
