@@ -4102,80 +4102,6 @@ function hideHistBanner(msg, ok) {
     : 'linear-gradient(90deg,#aa5500,#ffaa00)';
   setTimeout(() => { histLoadBanner.style.display = 'none'; }, 3000);
 }
-function groupCandles(rows, intervalMin) {
-  if (!rows.length) return [];
-  const intervalMs = intervalMin * 60000;
-  const candles = [];
-  let cur = null;
-  for (const r of rows) {
-    const bucket = Math.floor(new Date(r.candle_time).getTime() / intervalMs) * intervalMs;
-    // Fix 1: explicitly set startTime so the comparison works
-    if (!cur || cur.startTime !== bucket) {
-      if (cur) candles.push(cur);
-      cur = {
-        startTime: bucket,          // needed for grouping check
-        candle_time: new Date(bucket).toISOString(),
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-        volume: 0,
-        buy_vol: 0,
-        sell_vol: 0,
-        trade_count: 0,
-        levels: {}                  // temporary map keyed by real price
-      };
-    }
-    // Aggregate OHLCV
-    cur.high = Math.max(cur.high, r.high);
-    cur.low = Math.min(cur.low, r.low);
-    cur.close = r.close;
-    cur.volume += Number(r.volume);
-    cur.buy_vol += Number(r.buy_vol);
-    cur.sell_vol += Number(r.sell_vol);
-    cur.trade_count += Number(r.trade_count);
-
-    // Fix 2: merge footprint levels – use 'b'/'s' for buy/sell and convert 'p' to real price
-    if (r.levels && Array.isArray(r.levels)) {
-      for (const l of r.levels) {
-        const price = Number(l.p) / 10;    // p is price × 10 (e.g. 695122 → 69512.2)
-        const buy  = Number(l.b) || 0;
-        const sell = Number(l.s) || 0;
-        if (!cur.levels[price]) cur.levels[price] = { buy: 0, sell: 0 };
-        cur.levels[price].buy += buy;
-        cur.levels[price].sell += sell;
-      }
-    }
-  }
-  if (cur) candles.push(cur);
-
-  // Convert the levels map back to the sorted array the dashboard expects
-  return candles.map(c => ({
-    ...c,
-    levels: Object.entries(c.levels)
-      .map(([price, vol]) => ({ price: Number(price), buy: vol.buy, sell: vol.sell }))
-      .sort((a, b) => b.price - a.price)
-  }));
-}
-// ── v79: CANDLE RPC FETCH ─────────────────────────────────────────────────
-async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
-  const headers = {
-    'Content-Type':  'application/json'
-  };
-  const body = JSON.stringify({
-    p_from:         new Date(fromMs).toISOString(),
-    p_to:           new Date(toMs).toISOString(),
-    p_interval_min: 1,                   // always fetch 1‑minute candles (fast)
-    p_tick_size:    tickSz
-  });
-  const resp = await fetch(
-    `${SUPABASE_URL}/rpc/get_candles`,
-    { method: 'POST', headers, body }
-  );
-  if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
-  const rows = await resp.json();
-  return groupCandles(rows, intervalMin);   // group into the requested interval
-}
 
 // ── v79: SEED HISTORICAL CANDLES ──────────────────────────────────────────
 function seedHistoricalCandles(rows) {
@@ -4436,53 +4362,78 @@ async function bootstrap() {
     const fromMs = Date.now() - HIST_LOOKBACK_MS;
     const toMs   = Date.now();
     const ts     = tickSize || 0.1;
-    candleRows   = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
-    setHistProgress(90, `Loaded ${candleRows.length} candles. Seeding charts…`);
-  } catch (err) {
-    console.warn('[Bootstrap] get_candles RPC failed:', err);
-    setHistProgress(90, 'Candle fetch failed — live data only…');
-  }
-
-  // ── Phase 5: Binance REST — top up current open candle ──────────────
-  let binanceTrades = [];
-  try {
-    const resp = await fetch('https://api.binance.com/api/v3/aggTrades?symbol=' + SYMBOL.toUpperCase() + '&limit=1000');
-    const data = await resp.json();
-    binanceTrades = data;
-    setHistProgress(97, `Patching current candle with ${binanceTrades.length} live trades…`);
-  } catch (err) {
-    console.warn('[Bootstrap] Binance REST fetch failed:', err);
-  }
-
-  // ── Phase 6: seed candles + patch current open candle ───────────────
-  await new Promise(resolve => setTimeout(resolve, 20));
-  seedHistoricalCandles(candleRows);
-
-  if (binanceTrades.length) {
-    const liveBoundary = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
-    const bSeen = new Set();
-    const bDeduped = [];
-    for (const t of binanceTrades) {
-      const key = t.T + '|' + t.p + '|' + t.q + '|' + (t.m ? '1' : '0');
-      if (!bSeen.has(key)) { bSeen.add(key); bDeduped.push(t); }
+    // ── Phase 4: Raw trade fetch from Aiven (replaces broken RPC candles) ──
+    let allTrades = [];
+    try {
+      const rawRows = await fetchSupabaseTrades();  // uses SUPABASE_URL, already set to Aiven
+      allTrades = rawRows.map(r => ({
+        T: new Date(r.ts).getTime(),
+        p: String(r.price),
+        q: String(r.qty),
+        m: r.is_sell
+      }));
+      setHistProgress(90, `Loaded ${allTrades.length} raw trades. Seeding charts…`);
+    } catch (err) {
+      console.warn('[Bootstrap] Raw trade fetch failed:', err);
+      setHistProgress(90, 'Trade fetch failed — live data only…');
     }
-    const currentTrades = bDeduped.filter(t => t.T >= liveBoundary);
-    if (currentTrades.length) seedHistoricalTrades(currentTrades);
-  }
+    // Merge any previously cached trades from localStorage (e.g. from earlier Supabase)
+    try {
+      const cached = JSON.parse(localStorage.getItem(LS_TRADE_CACHE) || '[]');
+      if (cached.length) {
+        const cachedMapped = cached.map(r => ({
+          T: new Date(r.ts).getTime(),
+          p: String(r.price),
+          q: String(r.qty),
+          m: r.is_sell
+        }));
+        allTrades = [...cachedMapped, ...allTrades];
+        // deduplicate
+        const seen = new Set();
+        allTrades = allTrades.filter(t => {
+          const key = t.T + '|' + t.p;
+          if (seen.has(key)) return false;
+          seen.add(key); return true;
+        });
+      }
+    } catch (e) {}
+    allTrades.sort((a, b) => a.T - b.T);
 
-  // ── Phase 6b: seed EMA narrative from historical candles ────────────────
-  setHistProgress(99, 'Seeding narrative EMA from history…');
-  seedHistoricalEMA();
+    // ── Phase 5: Binance REST — top up current open candle ──────────────
+    let binanceTrades = [];
+    try {
+      const resp = await fetch('https://api.binance.com/api/v3/aggTrades?symbol=' + SYMBOL.toUpperCase() + '&limit=1000');
+      const data = await resp.json();
+      binanceTrades = data;
+      setHistProgress(97, `Patching current candle with ${binanceTrades.length} live trades…`);
+    } catch (err) {
+      console.warn('[Bootstrap] Binance REST fetch failed:', err);
+    }
 
-  // ── Phase 7: live trade WS — starts only after seed is complete ──────
-  lastUpdateTime = Date.now();
-  connectTrades();
+    // Merge Binance trades into allTrades (dedup)
+    for (const bt of binanceTrades) {
+      const key = bt.T + '|' + bt.p;
+      if (!allTrades.some(t => t.T + '|' + t.p === key)) allTrades.push(bt);
+    }
+    allTrades.sort((a, b) => a.T - b.T);
 
-  const candleCount = candles.length;
-  hideHistBanner(
-    `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${candleRows.length} RPC rows`,
-    true
-  );
+    // ── Phase 6: seed historical trades (builds candles, CVD, footprint) ──
+    await new Promise(resolve => setTimeout(resolve, 20));
+    seedHistoricalTrades(allTrades);
+
+    // ── Phase 6b: seed EMA narrative from historical candles ────────────
+    setHistProgress(99, 'Seeding narrative EMA from history…');
+    seedHistoricalEMA();
+
+    // ── Phase 7: live trade WS ────────────────────────────────────────
+    lastUpdateTime = Date.now();
+    connectTrades();
+
+    const candleCount = candles.length;
+    hideHistBanner(
+      `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${allTrades.length} raw trades`,
+      true
+    );
 
   // ── Phase 8  T+500ms: render loop ────────────────────────────────────
   // Bookmap + candles — give the order book at least one snapshot cycle
