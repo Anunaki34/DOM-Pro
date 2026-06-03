@@ -4338,7 +4338,7 @@ setInterval(() => {
 // ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
 // Fetches raw trades from Aiven via the PostgREST REST API.
 // Uses pagination (Range headers) and optional localStorage caching.
-async function fetchSupabaseTrades() {
+    async function fetchSupabaseTrades() {
   const cutoffMs  = Date.now() - HIST_LOOKBACK_MS;
   const cutoffISO = new Date(cutoffMs).toISOString();
 
