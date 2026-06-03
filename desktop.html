@@ -2437,6 +2437,9 @@ loadBtn.onclick=()=>{ const s=JSON.parse(localStorage.getItem("domSettings")||"{
   depthInput.oninput({target:depthInput}); imbalanceInput.oninput({target:imbalanceInput});
   document.getElementById("deltaWindow").oninput({target:document.getElementById("deltaWindow")});
   document.getElementById("obRangeInput").oninput({target:document.getElementById("obRangeInput")}); initCandles();
+                     
+// Rebuild candles with the newly loaded interval
+  if (candleIntervalMin) { changeCandleInterval(candleIntervalMin); }
 };
 
 // Controls, drag handlers, bookmap tooltip and event listeners
