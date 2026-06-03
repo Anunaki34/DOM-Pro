@@ -4358,8 +4358,7 @@ async function bootstrap() {
   // ── Phase 4: fetch pre-aggregated candles from Supabase RPC ────────────
   setHistProgress(7, 'Fetching candle history from Supabase…');
   let candleRows = [];
-  try {
-    const fromMs = Date.now() - HIST_LOOKBACK_MS;
+     const fromMs = Date.now() - HIST_LOOKBACK_MS;
     const toMs   = Date.now();
     const ts     = tickSize || 0.1;
     // ── Phase 4: Raw trade fetch from Aiven (replaces broken RPC candles) ──
