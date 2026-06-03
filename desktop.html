@@ -1115,6 +1115,7 @@ function changeCandleInterval(newVal) {
     try {
       const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
       seedHistoricalCandles(rows);
+      render();
     } catch (e) {
       console.warn('Interval change re‑fetch failed:', e);
     }
