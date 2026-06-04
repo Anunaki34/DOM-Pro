@@ -1106,29 +1106,22 @@ function changeCandleInterval(newVal) {
   timeframeChangeActive = true;
   tfChangeCountdown = candleVisibleCount * 2;
   try { localStorage.removeItem(LS_CANDLES); localStorage.removeItem(LS_FPLOG); } catch(e) {}
-
-  // ── Re‑fetch historical candles with the new interval ────────────
-   (async () => {
+  // ── Re‑fetch historical trades with the new interval ────────────
+  (async () => {
     const fromMs = Date.now() - HIST_LOOKBACK_MS;
     const toMs   = Math.floor(Date.now() / 60000) * 60000; // closed minutes only
-    const ts     = tickSize || 0.1;
     try {
-      const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
-      // Directly replace the candles array – no complex seed logic
-      candles = rows;
-      // Remove the current open candle; it will be rebuilt by live trades
-      currentCandle = {
-        startTime: alignToCandleBoundary(candleIntervalMin),
-        open: priceCenter || 0,
-        high: priceCenter || 0,
-        low: priceCenter || 0,
-        close: priceCenter || 0,
-        volume: 0,
-        buyVol: 0,
-        sellVol: 0,
-        trades: []
-      };
-      render();   // immediately redraw the chart
+      const rawRows = await fetchSupabaseTrades();
+      const allTrades = rawRows.map(r => ({
+        T: new Date(r.ts).getTime(),
+        p: String(r.price),
+        q: String(r.qty),
+        m: r.is_sell
+      }));
+      // Rebuild candles from raw trades
+      candles = [];
+      seedHistoricalTrades(allTrades);
+      render();
     } catch (e) {
       console.warn('Interval change re‑fetch failed:', e);
     }
@@ -4377,22 +4370,7 @@ setInterval(() => {
     tradeEventBuffer = [];
   }
 }, TRADE_BUFFER_MS);
-
- async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
-  const headers = { 'Content-Type': 'application/json' };
-  const body = JSON.stringify({
-    p_from:         new Date(fromMs).toISOString(),
-    p_to:           new Date(toMs).toISOString(),
-    p_interval_min: intervalMin,
-    p_tick_size:    tickSz
-  });
-  const resp = await fetch(
-    `${SUPABASE_URL}/rpc/get_candles`,
-    { method: 'POST', headers, body }
-  );
-  if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
-  return await resp.json();
-}
+ 
 // ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
 // Fetches raw trades from Aiven via the PostgREST REST API.
 // Uses pagination (Range headers) and optional localStorage caching.
