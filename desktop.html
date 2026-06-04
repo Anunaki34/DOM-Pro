@@ -4380,21 +4380,17 @@ setInterval(() => {
 
  async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
   const headers = { 'Content-Type': 'application/json' };
-  let rpcName = 'get_candles';   // default: works for any interval
-  if (intervalMin === 15) rpcName = 'get_candles_15m';  // instant 15m view
-
   const body = JSON.stringify({
-    p_from: new Date(fromMs).toISOString(),
-    p_to:   new Date(toMs).toISOString(),
+    p_from:         new Date(fromMs).toISOString(),
+    p_to:           new Date(toMs).toISOString(),
     p_interval_min: intervalMin,
     p_tick_size:    tickSz
   });
-
   const resp = await fetch(
-    `${SUPABASE_URL}/rpc/${rpcName}`,
+    `${SUPABASE_URL}/rpc/get_candles`,
     { method: 'POST', headers, body }
   );
-  if (!resp.ok) throw new Error(`${rpcName} HTTP ${resp.status}`);
+  if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
   return await resp.json();
 }
 // ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
