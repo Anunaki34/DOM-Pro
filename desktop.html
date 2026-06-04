@@ -4377,47 +4377,7 @@ setInterval(() => {
     tradeEventBuffer = [];
   }
 }, TRADE_BUFFER_MS);
-function groupCandles(rows, intervalMin) {
-  if (!rows.length) return [];
-  const intervalMs = intervalMin * 60000;
-  const candles = [];
-  let cur = null;
-  for (const r of rows) {
-    const bucket = Math.floor(new Date(r.candle_time).getTime() / intervalMs) * intervalMs;
-    if (!cur || cur.startTime !== bucket) {
-      if (cur) candles.push(cur);
-      cur = {
-        startTime: bucket,
-        candle_time: new Date(bucket).toISOString(),
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-        volume: 0,
-        buy_vol: 0,
-        sell_vol: 0,
-        trade_count: 0,
-        levels: {}
-      };
-    }
-    cur.high   = Math.max(cur.high, r.high);
-    cur.low    = Math.min(cur.low, r.low);
-    cur.close  = r.close;
-    cur.volume += Number(r.volume);
-    cur.buy_vol  += Number(r.buy_vol);
-    cur.sell_vol += Number(r.sell_vol);
-    cur.trade_count += Number(r.trade_count);
-    if (r.levels && Array.isArray(r.levels)) {
-      for (const l of r.levels) {
-        const realPrice = Number(l.p) / 10;
-        const buy       = Number(l.b) || 0;
-        const sell      = Number(l.s) || 0;
-        if (!cur.levels[realPrice]) cur.levels[realPrice] = { buy: 0, sell: 0 };
-        cur.levels[realPrice].buy  += buy;
-        cur.levels[realPrice].sell += sell;
-      }
-    }
-  }
+
   if (cur) candles.push(cur);
   return candles.map(c => ({
     ...c,
@@ -4431,7 +4391,7 @@ async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
   const body = JSON.stringify({
     p_from:         new Date(fromMs).toISOString(),
     p_to:           new Date(toMs).toISOString(),
-    p_interval_min: 1,
+    p_interval_min: intervalMin,            // real interval (5, 15, …)
     p_tick_size:    tickSz
   });
   const resp = await fetch(
@@ -4439,8 +4399,7 @@ async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
     { method: 'POST', headers, body }
   );
   if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
-  const rows = await resp.json();
-  return groupCandles(rows, intervalMin);
+  return await resp.json();                 // server already grouped
 }
 // ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
 // Fetches raw trades from Aiven via the PostgREST REST API.
