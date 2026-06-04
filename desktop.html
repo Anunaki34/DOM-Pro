@@ -612,8 +612,8 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   <!-- Candles Controls -->
   <div class="ctrl-group">
     <span class="ctrl-label">CANDLES</span>
-    <label>Interval (min):</label><input type="number" id="candleInterval" value="5" min="1" max="60" step="1" style="width:45px;">
-    <label>Visible:</label><input type="number" id="candleVisibleCount" value="5" min="2" max="20" step="1" style="width:40px;">
+    <label>Interval (min):</label><input type="number" id="candleInterval" value="15" min="1" max="60" step="1" style="width:45px;">
+    <label>Visible:</label><input type="number" id="candleVisibleCount" value="4" min="2" max="20" step="1" style="width:40px;">
     <label>Log Window (min):</label><input type="number" id="fpLogWindow" value="5" step="1" min="1" max="60" style="width:45px;">
   </div>
   <!-- Delta Controls -->
@@ -932,7 +932,7 @@ let plrCycleCount = 0, plrCurrentState = "", plrPendingState = "", plrLastResult
 let fpLog = [], fpLogWindowMs = 5 * 60000, fpPeriodTrades = [], fpPeriodStartTime = Date.now(), fpLogNextTime;
 
 // Candles
-let candleIntervalMin = 5, candleVisibleCount = 5, candles = [], currentCandle = null;
+let candleIntervalMin = 15, candleVisibleCount = 4, candles = [], currentCandle = null;
 let lastClosedBoundary = 0, timeframeChangeActive = false, tfChangeCountdown = 0;
 // ── Delta flip glow tracking ──────────────────────────────────────────────
 let _prevDeltaSign  = 0;
@@ -4378,20 +4378,24 @@ setInterval(() => {
   }
 }, TRADE_BUFFER_MS);
 
-  async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
+ async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
   const headers = { 'Content-Type': 'application/json' };
+  let rpcName = 'get_candles';   // default: works for any interval
+  if (intervalMin === 15) rpcName = 'get_candles_15m';  // instant 15m view
+
   const body = JSON.stringify({
-    p_from:         new Date(fromMs).toISOString(),
-    p_to:           new Date(toMs).toISOString(),
-    p_interval_min: intervalMin,            // real interval (5, 15, …)
+    p_from: new Date(fromMs).toISOString(),
+    p_to:   new Date(toMs).toISOString(),
+    p_interval_min: intervalMin,
     p_tick_size:    tickSz
   });
+
   const resp = await fetch(
-    `${SUPABASE_URL}/rpc/get_candles`,
+    `${SUPABASE_URL}/rpc/${rpcName}`,
     { method: 'POST', headers, body }
   );
-  if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
-  return await resp.json();                 // server already grouped
+  if (!resp.ok) throw new Error(`${rpcName} HTTP ${resp.status}`);
+  return await resp.json();
 }
 // ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
 // Fetches raw trades from Aiven via the PostgREST REST API.
