@@ -4378,8 +4378,7 @@ setInterval(() => {
   }
 }, TRADE_BUFFER_MS);
 
-  if (cur) candles.push(cur);
- async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
+  async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
   const headers = { 'Content-Type': 'application/json' };
   const body = JSON.stringify({
     p_from:         new Date(fromMs).toISOString(),
