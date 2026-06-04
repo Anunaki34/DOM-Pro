@@ -4379,14 +4379,7 @@ setInterval(() => {
 }, TRADE_BUFFER_MS);
 
   if (cur) candles.push(cur);
-  return candles.map(c => ({
-    ...c,
-    levels: Object.entries(c.levels)
-      .map(([price, vol]) => ({ price: Number(price), buy: vol.buy, sell: vol.sell }))
-      .sort((a, b) => b.price - a.price)
-  }));
-}
-async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
+ async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
   const headers = { 'Content-Type': 'application/json' };
   const body = JSON.stringify({
     p_from:         new Date(fromMs).toISOString(),
