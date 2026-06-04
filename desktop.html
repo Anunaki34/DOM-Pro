@@ -1107,20 +1107,23 @@ function changeCandleInterval(newVal) {
   tfChangeCountdown = candleVisibleCount * 2;
   try { localStorage.removeItem(LS_CANDLES); localStorage.removeItem(LS_FPLOG); } catch(e) {}
   // ── Re‑fetch historical trades with the new interval ────────────
-  (async () => {
+    (async () => {
     const fromMs = Date.now() - HIST_LOOKBACK_MS;
     const toMs   = Math.floor(Date.now() / 60000) * 60000; // closed minutes only
     try {
-      const rawRows = await fetchSupabaseTrades();
-      const allTrades = rawRows.map(r => ({
-        T: new Date(r.ts).getTime(),
-        p: String(r.price),
-        q: String(r.qty),
-        m: r.is_sell
-      }));
-      // Rebuild candles from raw trades
-      candles = [];
-      seedHistoricalTrades(allTrades);
+      const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
+      candles = rows;
+      currentCandle = {
+        startTime: alignToCandleBoundary(candleIntervalMin),
+        open: priceCenter || 0,
+        high: priceCenter || 0,
+        low: priceCenter || 0,
+        close: priceCenter || 0,
+        volume: 0,
+        buyVol: 0,
+        sellVol: 0,
+        trades: []
+      };
       render();
     } catch (e) {
       console.warn('Interval change re‑fetch failed:', e);
@@ -4374,71 +4377,22 @@ setInterval(() => {
 // ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
 // Fetches raw trades from Aiven via the PostgREST REST API.
 // Uses pagination (Range headers) and optional localStorage caching.
-    async function fetchSupabaseTrades() {
-  const cutoffMs  = Date.now() - HIST_LOOKBACK_MS;
-  const cutoffISO = new Date(cutoffMs).toISOString();
-
-  const headers = {
-    'Content-Type': 'application/json'
-  };
-
-  let allRows = [];
-  let page = 0;
-  let done = false;
-
-  // Try to load cached trades from localStorage (if available)
-  try {
-    const raw = localStorage.getItem(LS_TRADE_CACHE);
-    const ts  = localStorage.getItem(LS_TRADE_CACHE_TS);
-    if (raw && ts) {
-      const cached = JSON.parse(raw);
-      const cachedCutoff = new Date(Date.now() - HIST_LOOKBACK_MS).toISOString();
-      const freshCache = cached.filter(r => r.ts >= cachedCutoff);
-      if (freshCache.length) {
-        allRows = freshCache;
-        console.log(`[fetchSupabaseTrades] Loaded ${allRows.length} trades from cache`);
-        return allRows;   // use cache and skip network call
-      }
-    }
-  } catch (e) { /* ignore cache errors */ }
-
-  while (!done && page < HIST_MAX_PAGES) {
-    const from = page * HIST_PAGE_SIZE;
-    const to   = from + HIST_PAGE_SIZE - 1;
-
-    const url = `${SUPABASE_URL}/trades?select=ts,price,qty,is_sell&order=ts.asc&ts=gte.${cutoffISO}`;
-    const resp = await fetch(url, {
-      headers: {
-        ...headers,
-        'Range': `${from}-${to}`,
-        'Range-Unit': 'items',
-        'Prefer': 'count=none'
-      }
-    });
-
-    if (!resp.ok) {
-      console.warn(`[fetchSupabaseTrades] HTTP ${resp.status} on page ${page}`);
-      break;
-    }
-
-    const data = await resp.json();
-    if (!data.length) { done = true; break; }
-
-    allRows = allRows.concat(data);
-    page++;
-
-    if (data.length < HIST_PAGE_SIZE) { done = true; }
-  }
-
-  // Save fetched rows to localStorage for next load (optional)
-  try {
-    localStorage.setItem(LS_TRADE_CACHE, JSON.stringify(allRows.slice(-50000)));
-    localStorage.setItem(LS_TRADE_CACHE_TS, new Date().toISOString());
-  } catch (e) { /* quota exceeded, ignore */ }
-
-  return allRows;
+    
+async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
+  const headers = { 'Content-Type': 'application/json' };
+  const body = JSON.stringify({
+    p_from:         new Date(fromMs).toISOString(),
+    p_to:           new Date(toMs).toISOString(),
+    p_interval_min: intervalMin,
+    p_tick_size:    tickSz
+  });
+  const resp = await fetch(
+    `${SUPABASE_URL}/rpc/get_candles`,
+    { method: 'POST', headers, body }
+  );
+  if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
+  return await resp.json();
 }
-  
 // ── MAIN BOOTSTRAP (async, phased) ───────────────────────────────────────
 async function bootstrap() {
 
@@ -4459,21 +4413,18 @@ async function bootstrap() {
   setHistProgress(5, 'Connecting order book…');
   seedOrderBook();
   connectDepth();
-
-    // ── Phase 4: Raw trade fetch (Aiven – no egress limits) ──────────
-    let allTrades = [];
+  
+    // ── Phase 4: fetch pre-aggregated candles from Aiven RPC ──────────
+    let candleRows = [];
     try {
-      const rawRows = await fetchSupabaseTrades();
-      allTrades = rawRows.map(r => ({
-        T: new Date(r.ts).getTime(),
-        p: String(r.price),
-        q: String(r.qty),
-        m: r.is_sell
-      }));
-      setHistProgress(90, `Loaded ${allTrades.length} raw trades. Seeding charts…`);
+      const fromMs = Date.now() - HIST_LOOKBACK_MS;
+      const toMs   = Date.now();
+      const ts     = tickSize || 0.1;
+      candleRows   = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
+      setHistProgress(90, `Loaded ${candleRows.length} candles. Seeding charts…`);
     } catch (err) {
-      console.warn('[Bootstrap] Raw trade fetch failed:', err);
-      setHistProgress(90, 'Trade fetch failed — live data only…');
+      console.warn('[Bootstrap] get_candles RPC failed:', err);
+      setHistProgress(90, 'Candle fetch failed — live data only…');
     }
 
     // ── Phase 5: Binance REST — top up current open candle ──────────
@@ -4487,30 +4438,36 @@ async function bootstrap() {
       console.warn('[Bootstrap] Binance REST fetch failed:', err);
     }
 
-    // Merge Binance trades into allTrades (dedup)
-    for (const bt of binanceTrades) {
-      const key = bt.T + '|' + bt.p;
-      if (!allTrades.some(t => t.T + '|' + t.p === key)) allTrades.push(bt);
-    }
-    allTrades.sort((a, b) => a.T - b.T);
-
-    // ── Phase 6: seed historical trades (builds candles, CVD, footprint) ──
+    // ── Phase 6: seed candles + patch current open candle ───────────
     await new Promise(resolve => setTimeout(resolve, 20));
-    seedHistoricalTrades(allTrades);
+    seedHistoricalCandles(candleRows);
 
-    // ── Phase 6b: seed EMA narrative ─────────────────────────────────
+    if (binanceTrades.length) {
+      const liveBoundary = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
+      const bSeen = new Set();
+      const bDeduped = [];
+      for (const t of binanceTrades) {
+        const key = t.T + '|' + t.p + '|' + t.q + '|' + (t.m ? '1' : '0');
+        if (!bSeen.has(key)) { bSeen.add(key); bDeduped.push(t); }
+      }
+      const currentTrades = bDeduped.filter(t => t.T >= liveBoundary);
+      if (currentTrades.length) seedHistoricalTrades(currentTrades);
+    }
+
+    // ── Phase 6b: seed EMA narrative from historical candles ──────────
     setHistProgress(99, 'Seeding narrative EMA from history…');
     seedHistoricalEMA();
 
-    // ── Phase 7: live trade WS ───────────────────────────────────────
+    // ── Phase 7: live trade WS ────────────────────────────────────────
     lastUpdateTime = Date.now();
     connectTrades();
 
     const candleCount = candles.length;
     hideHistBanner(
-      `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${allTrades.length} raw trades`,
+      `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${candleRows.length} RPC rows`,
       true
     );
+    
   // ── Phase 8  T+500ms: render loop ────────────────────────────────────
   // Bookmap + candles — give the order book at least one snapshot cycle
   // before rendering so the first frame isn't empty.
