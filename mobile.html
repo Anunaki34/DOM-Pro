@@ -657,8 +657,8 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   <!-- Candles Controls -->
   <div class="ctrl-group">
     <span class="ctrl-label">CANDLES</span>
-    <label>Interval (min):</label><input type="number" id="candleInterval" value="5" min="1" max="60" step="1" style="width:45px;">
-    <label>Visible:</label><input type="number" id="candleVisibleCount" value="5" min="2" max="20" step="1" style="width:40px;">
+    <label>Interval (min):</label><input type="number" id="candleInterval" value="15" min="1" max="60" step="1" style="width:45px;">
+    <label>Visible:</label><input type="number" id="candleVisibleCount" value="4" min="2" max="20" step="1" style="width:40px;">
     <label>Log Window (min):</label><input type="number" id="fpLogWindow" value="5" step="1" min="1" max="60" style="width:45px;">
   </div>
   <!-- Delta Controls -->
@@ -979,7 +979,7 @@ let plrCycleCount = 0, plrCurrentState = "", plrPendingState = "", plrLastResult
 let fpLog = [], fpLogWindowMs = 5 * 60000, fpPeriodTrades = [], fpPeriodStartTime = Date.now(), fpLogNextTime;
 
 // Candles
-let candleIntervalMin = 5, candleVisibleCount = 5, candles = [], currentCandle = null;
+let candleIntervalMin = 15, candleVisibleCount = 4, candles = [], currentCandle = null;
 let lastClosedBoundary = 0, timeframeChangeActive = false, tfChangeCountdown = 0;
 // ── Delta flip glow tracking ──────────────────────────────────────────────
 let _prevDeltaSign  = 0;
@@ -1144,6 +1144,30 @@ function changeCandleInterval(newVal) {
   timeframeChangeActive = true; tfChangeCountdown = candleVisibleCount*2;
   // Clear persisted candles — they belong to the old interval and would misalign on reload
   try { localStorage.removeItem(LS_CANDLES); localStorage.removeItem(LS_FPLOG); } catch(e) {}
+  
+  // ── Re‑fetch candles with the new interval ────────────
+  (async () => {
+    const fromMs = Date.now() - HIST_LOOKBACK_MS;
+    const toMs   = Math.floor(Date.now() / 60000) * 60000;
+    try {
+      const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, tickSize || 0.1);
+      candles = rows;
+      currentCandle = {
+        startTime: alignToCandleBoundary(candleIntervalMin),
+        open: priceCenter || 0,
+        high: priceCenter || 0,
+        low: priceCenter || 0,
+        close: priceCenter || 0,
+        volume: 0,
+        buyVol: 0,
+        sellVol: 0,
+        trades: []
+      };
+      render();
+    } catch (e) {
+      console.warn('Interval change re‑fetch failed:', e);
+    }
+  })();
 }
 function updateCandleWithTrade(price, qty, isSell) {
   const boundary = alignToCandleBoundary(candleIntervalMin);
@@ -1659,7 +1683,8 @@ function renderCandles() {
 
     // ── Time label ───────────────────────────────────────────────────────
     const d = new Date(candle.startTime);
-    const timeLabel = d.getHours().toString().padStart(2,'0') + ':' + d.getMinutes().toString().padStart(2,'0');
+    const localHours = (d.getUTCHours() + 8) % 24;
+    const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes().toString().padStart(2,'0');
     const timeLabelY = Math.min(h - 14, yLow + 9);
     ctx.fillStyle = fpLightMode ? 'rgba(80,70,50,0.80)' : 'rgba(80,105,130,0.85)';
     ctx.font = '7px monospace'; ctx.textAlign = 'center';
@@ -3774,7 +3799,7 @@ document.getElementById('clearChartData').onclick = clearPersistedData;
 
 // ── logCandleToPeriodLog — persist-patched version ───────────────────────
 function logCandleToPeriodLog(candle) {
-  const time = new Date(candle.startTime), timeLabel = time.getHours().toString().padStart(2,'0')+":"+time.getMinutes().toString().padStart(2,'0');
+  const time = new Date(candle.startTime), localHours = (time.getUTCHours() + 8) % 24, timeLabel = localHours.toString().padStart(2,'0')+":"+time.getUTCMinutes().toString().padStart(2,'0');
   // Guard: skip if this candle's startTime is already in fpLog (prevents duplicate on reload+seed)
   if (fpLog.some(e => e.startTime === candle.startTime)) return;
   const entry = { timeLabel, startTime: candle.startTime, lo: candle.low.toFixed(tickDecimals), hi: candle.high.toFixed(tickDecimals), netDelta: candle.buyVol-candle.sellVol, buy: candle.buyVol, sell: candle.sellVol, open: candle.open, close: candle.close, volume: candle.volume, quiet: false };
@@ -4497,7 +4522,21 @@ setInterval(() => {
     tradeEventBuffer = [];
   }
 }, TRADE_BUFFER_MS);
-
+async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
+  const headers = { 'Content-Type': 'application/json' };
+  const body = JSON.stringify({
+    p_from:         new Date(fromMs).toISOString(),
+    p_to:           new Date(toMs).toISOString(),
+    p_interval_min: intervalMin,
+    p_tick_size:    tickSz
+  });
+  const resp = await fetch(
+    `${SUPABASE_URL}/rpc/get_candles`,
+    { method: 'POST', headers, body }
+  );
+  if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
+  return await resp.json();
+}
 // ── MAIN BOOTSTRAP (async, phased) ───────────────────────────────────────
 async function bootstrap() {
 
@@ -4520,69 +4559,59 @@ async function bootstrap() {
   seedOrderBook();
   connectDepth();
 
-  // ── Phase 4: fetch pre-aggregated candles from Supabase RPC ────────────
-  // get_candles() returns OHLCV + footprint levels — no raw trades needed.
-  // Egress: ~200KB for 24h vs ~8MB raw. Accurate from first frame.
-  setHistProgress(7, 'Fetching candle history from Supabase…');
-  let candleRows = [];
-  try {
-    const fromMs = Date.now() - HIST_LOOKBACK_MS;
-    const toMs   = Date.now();
-    const ts     = tickSize || 0.1;
-    candleRows   = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
-    setHistProgress(90, `Loaded ${candleRows.length} candles. Seeding charts…`);
-  } catch (err) {
-    console.warn('[Bootstrap] get_candles RPC failed:', err);
-    setHistProgress(90, 'Candle fetch failed — live data only…');
-  }
-
-  // ── Phase 5: Binance REST — top up current open candle ──────────────
-  // The materialized view refreshes every minute; Binance gives us the
-  // last ~60s of trades that haven't been aggregated yet.
-  let binanceTrades = [];
-  try {
-    const resp = await fetch('https://api.binance.com/api/v3/aggTrades?symbol=' + SYMBOL.toUpperCase() + '&limit=1000');
-    const data = await resp.json();
-    binanceTrades = data;
-    setHistProgress(97, `Patching current candle with ${binanceTrades.length} live trades…`);
-  } catch (err) {
-    console.warn('[Bootstrap] Binance REST fetch failed:', err);
-  }
-
-  // ── Phase 6: seed candles + patch current open candle ───────────────
-  await new Promise(resolve => setTimeout(resolve, 20)); // yield for progress render
-  seedHistoricalCandles(candleRows);
-
-  // Patch current open candle with Binance trades newer than last candle boundary.
-  // Dedup before feeding to avoid double-counting if any overlap exists.
-  if (binanceTrades.length) {
-    const liveBoundary = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
-    const bSeen = new Set();
-    const bDeduped = [];
-    for (const t of binanceTrades) {
-      const key = t.T + '|' + t.p + '|' + t.q + '|' + (t.m ? '1' : '0');
-      if (!bSeen.has(key)) { bSeen.add(key); bDeduped.push(t); }
+      // ── Phase 4: fetch pre-aggregated candles from Aiven RPC ──────────
+    let candleRows = [];
+    try {
+      const fromMs = Date.now() - HIST_LOOKBACK_MS;
+      const toMs   = Date.now();
+      const ts     = tickSize || 0.1;
+      candleRows   = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
+      setHistProgress(90, `Loaded ${candleRows.length} candles. Seeding charts…`);
+    } catch (err) {
+      console.warn('[Bootstrap] get_candles RPC failed:', err);
+      setHistProgress(90, 'Candle fetch failed — live data only…');
     }
-    const currentTrades = bDeduped.filter(t => t.T >= liveBoundary);
-    if (currentTrades.length) seedHistoricalTrades(currentTrades);
-  }
 
-  const deduped = { length: candleRows.length }; // for banner message only
+    // ── Phase 5: Binance REST — top up current open candle ──────────
+    let binanceTrades = [];
+    try {
+      const resp = await fetch('https://api.binance.com/api/v3/aggTrades?symbol=' + SYMBOL.toUpperCase() + '&limit=1000');
+      const data = await resp.json();
+      binanceTrades = data;
+      setHistProgress(97, `Patching current candle with ${binanceTrades.length} live trades…`);
+    } catch (err) {
+      console.warn('[Bootstrap] Binance REST fetch failed:', err);
+    }
 
-  // ── Phase 6b: seed EMA narrative from historical candles ────────────────
-  setHistProgress(99, 'Seeding narrative EMA from history…');
-  seedHistoricalEMA();
+    // ── Phase 6: seed candles + patch current open candle ───────────
+    await new Promise(resolve => setTimeout(resolve, 20));
+    seedHistoricalCandles(candleRows);
 
-  // ── Phase 7: live trade WS — starts only after seed is complete ──────
-  lastUpdateTime = Date.now();
-  connectTrades();
+    if (binanceTrades.length) {
+      const liveBoundary = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
+      const bSeen = new Set();
+      const bDeduped = [];
+      for (const t of binanceTrades) {
+        const key = t.T + '|' + t.p + '|' + t.q + '|' + (t.m ? '1' : '0');
+        if (!bSeen.has(key)) { bSeen.add(key); bDeduped.push(t); }
+      }
+      const currentTrades = bDeduped.filter(t => t.T >= liveBoundary);
+      if (currentTrades.length) seedHistoricalTrades(currentTrades);
+    }
 
-  const candleCount = candles.length;
-  hideHistBanner(
-    `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${candleRows.length} RPC rows`,
-    true
-  );
+    // ── Phase 6b: seed EMA narrative from historical candles ──────────
+    setHistProgress(99, 'Seeding narrative EMA from history…');
+    seedHistoricalEMA();
 
+    // ── Phase 7: live trade WS ────────────────────────────────────────
+    lastUpdateTime = Date.now();
+    connectTrades();
+
+    const candleCount = candles.length;
+    hideHistBanner(
+      `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${candleRows.length} RPC rows`,
+      true
+    );
   // ── Phase 8  T+500ms: render loop ────────────────────────────────────
   // Bookmap + candles — give the order book at least one snapshot cycle
   // before rendering so the first frame isn't empty.
