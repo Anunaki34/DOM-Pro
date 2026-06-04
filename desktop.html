@@ -1108,14 +1108,27 @@ function changeCandleInterval(newVal) {
   try { localStorage.removeItem(LS_CANDLES); localStorage.removeItem(LS_FPLOG); } catch(e) {}
 
   // ── Re‑fetch historical candles with the new interval ────────────
-  (async () => {
+   (async () => {
     const fromMs = Date.now() - HIST_LOOKBACK_MS;
     const toMs   = Math.floor(Date.now() / 60000) * 60000; // closed minutes only
     const ts     = tickSize || 0.1;
     try {
       const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
-      seedHistoricalCandles(rows);
-      render();
+      // Directly replace the candles array – no complex seed logic
+      candles = rows;
+      // Remove the current open candle; it will be rebuilt by live trades
+      currentCandle = {
+        startTime: alignToCandleBoundary(candleIntervalMin),
+        open: priceCenter || 0,
+        high: priceCenter || 0,
+        low: priceCenter || 0,
+        close: priceCenter || 0,
+        volume: 0,
+        buyVol: 0,
+        sellVol: 0,
+        trades: []
+      };
+      render();   // immediately redraw the chart
     } catch (e) {
       console.warn('Interval change re‑fetch failed:', e);
     }
