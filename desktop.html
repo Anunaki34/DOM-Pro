@@ -4482,10 +4482,9 @@ async function bootstrap() {
   seedOrderBook();
   connectDepth();
 
-      // ── Phase 4: Raw trade fetch (Aiven – no egress limits) ──────────
+    // ── Phase 4: Raw trade fetch (Aiven – no egress limits) ──────────
     let allTrades = [];
     try {
-      // Reuse the existing fetchSupabaseTrades function that works with Aiven
       const rawRows = await fetchSupabaseTrades();
       allTrades = rawRows.map(r => ({
         T: new Date(r.ts).getTime(),
@@ -4534,7 +4533,6 @@ async function bootstrap() {
       `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${allTrades.length} raw trades`,
       true
     );
-
   // ── Phase 8  T+500ms: render loop ────────────────────────────────────
   // Bookmap + candles — give the order book at least one snapshot cycle
   // before rendering so the first frame isn't empty.
