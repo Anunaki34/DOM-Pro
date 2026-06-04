@@ -4531,17 +4531,21 @@ async function bootstrap() {
   seedOrderBook();
   connectDepth();
 
-       // ── Phase 4: fetch pre-aggregated candles from Aiven RPC ──────────
-    let candleRows = [];
+      // ── Phase 4: Raw trade fetch (Aiven – no egress limits) ──────────
+    let allTrades = [];
     try {
-      const fromMs = Date.now() - HIST_LOOKBACK_MS;
-      const toMs   = Date.now();
-      const ts     = tickSize || 0.1;
-      candleRows   = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
-      setHistProgress(90, `Loaded ${candleRows.length} candles. Seeding charts…`);
+      // Reuse the existing fetchSupabaseTrades function that works with Aiven
+      const rawRows = await fetchSupabaseTrades();
+      allTrades = rawRows.map(r => ({
+        T: new Date(r.ts).getTime(),
+        p: String(r.price),
+        q: String(r.qty),
+        m: r.is_sell
+      }));
+      setHistProgress(90, `Loaded ${allTrades.length} raw trades. Seeding charts…`);
     } catch (err) {
-      console.warn('[Bootstrap] get_candles RPC failed:', err);
-      setHistProgress(90, 'Candle fetch failed — live data only…');
+      console.warn('[Bootstrap] Raw trade fetch failed:', err);
+      setHistProgress(90, 'Trade fetch failed — live data only…');
     }
 
     // ── Phase 5: Binance REST — top up current open candle ──────────
@@ -4555,33 +4559,28 @@ async function bootstrap() {
       console.warn('[Bootstrap] Binance REST fetch failed:', err);
     }
 
-    // ── Phase 6: seed candles + patch current open candle ───────────
-    await new Promise(resolve => setTimeout(resolve, 20));
-    seedHistoricalCandles(candleRows);
-
-    if (binanceTrades.length) {
-      const liveBoundary = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
-      const bSeen = new Set();
-      const bDeduped = [];
-      for (const t of binanceTrades) {
-        const key = t.T + '|' + t.p + '|' + t.q + '|' + (t.m ? '1' : '0');
-        if (!bSeen.has(key)) { bSeen.add(key); bDeduped.push(t); }
-      }
-      const currentTrades = bDeduped.filter(t => t.T >= liveBoundary);
-      if (currentTrades.length) seedHistoricalTrades(currentTrades);
+    // Merge Binance trades into allTrades (dedup)
+    for (const bt of binanceTrades) {
+      const key = bt.T + '|' + bt.p;
+      if (!allTrades.some(t => t.T + '|' + t.p === key)) allTrades.push(bt);
     }
+    allTrades.sort((a, b) => a.T - b.T);
 
-    // ── Phase 6b: seed EMA narrative from historical candles ──────────
+    // ── Phase 6: seed historical trades (builds candles, CVD, footprint) ──
+    await new Promise(resolve => setTimeout(resolve, 20));
+    seedHistoricalTrades(allTrades);
+
+    // ── Phase 6b: seed EMA narrative ─────────────────────────────────
     setHistProgress(99, 'Seeding narrative EMA from history…');
     seedHistoricalEMA();
 
-    // ── Phase 7: live trade WS ────────────────────────────────────────
+    // ── Phase 7: live trade WS ───────────────────────────────────────
     lastUpdateTime = Date.now();
     connectTrades();
 
     const candleCount = candles.length;
     hideHistBanner(
-      `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${candleRows.length} RPC rows`,
+      `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${allTrades.length} raw trades`,
       true
     );
 
