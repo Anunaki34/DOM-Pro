@@ -1111,7 +1111,7 @@ function changeCandleInterval(newVal) {
     const fromMs = Date.now() - HIST_LOOKBACK_MS;
     const toMs   = Math.floor(Date.now() / 60000) * 60000; // closed minutes only
     try {
-      const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, ts);
+      const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, tickSize || 0.1);
       candles = rows;
       currentCandle = {
         startTime: alignToCandleBoundary(candleIntervalMin),
