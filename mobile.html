@@ -1131,41 +1131,48 @@ function initCandles() {
   lastClosedBoundary = boundary - candleIntervalMin*60000;
 }
 function changeCandleInterval(newVal) {
+  // If the interval hasn't changed, do nothing
+  if (newVal === candleIntervalMin && candles.length > 0) return;
+
   candleIntervalMin = newVal;
-  if (currentCandle && currentCandle.volume>0) {
-    if (candles.length===0 || candles[candles.length-1].startTime !== currentCandle.startTime) {
-      candles.push({...currentCandle}); if (candles.length>500) candles.shift(); logCandleToPeriodLog(currentCandle);
-    }
-  }
+  // Keep old candles as fallback
+  const oldCandles = candles;
+  candles = [];
+
   const boundary = alignToCandleBoundary(candleIntervalMin);
-  // Sentinel 0 for OHLC — same reason as initCandles()
-  currentCandle = { startTime: boundary, open: 0, high: 0, low: 0, close: 0, volume:0, buyVol:0, sellVol:0, trades:[] };
-  lastClosedBoundary = boundary - candleIntervalMin*60000;
-  timeframeChangeActive = true; tfChangeCountdown = candleVisibleCount*2;
-  // Clear persisted candles — they belong to the old interval and would misalign on reload
+  currentCandle = {
+    startTime: boundary,
+    open: priceCenter || 0,
+    high: priceCenter || 0,
+    low: priceCenter || 0,
+    close: priceCenter || 0,
+    volume: 0,
+    buyVol: 0,
+    sellVol: 0,
+    trades: []
+  };
+  lastClosedBoundary = boundary - candleIntervalMin * 60000;
+  timeframeChangeActive = true;
+  tfChangeCountdown = candleVisibleCount * 2;
   try { localStorage.removeItem(LS_CANDLES); localStorage.removeItem(LS_FPLOG); } catch(e) {}
-  
-  // ── Re‑fetch candles with the new interval ────────────
+
   (async () => {
     const fromMs = Date.now() - HIST_LOOKBACK_MS;
     const toMs   = Math.floor(Date.now() / 60000) * 60000;
     try {
       const rows = await fetchCandles(fromMs, toMs, candleIntervalMin, tickSize || 0.1);
-      candles = rows;
-      currentCandle = {
-        startTime: alignToCandleBoundary(candleIntervalMin),
-        open: priceCenter || 0,
-        high: priceCenter || 0,
-        low: priceCenter || 0,
-        close: priceCenter || 0,
-        volume: 0,
-        buyVol: 0,
-        sellVol: 0,
-        trades: []
-      };
+      // Only use new rows if fetch succeeded
+      if (rows && rows.length > 0) {
+        candles = rows;
+      } else {
+        candles = oldCandles;
+      }
       render();
     } catch (e) {
-      console.warn('Interval change re‑fetch failed:', e);
+      console.warn('Interval change re‑fetch failed, keeping old candles:', e);
+      // Restore old candles on failure
+      candles = oldCandles;
+      render();
     }
   })();
 }
