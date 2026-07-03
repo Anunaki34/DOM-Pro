@@ -1712,7 +1712,11 @@ const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes(
   });
 
   const totalDelta = displayCandles.reduce((s, c) => s + (c.buyVol - c.sellVol), 0);
-  candleTotalDelta.innerHTML = `Total \u0394: ${totalDelta>=0?'+':''}${totalDelta.toFixed(2)} BTC`;
+  const absTD = Math.abs(totalDelta);
+  const tdStr = absTD >= 1000
+    ? (totalDelta >= 0 ? '+' : '-') + (absTD / 1000).toFixed(2) + 'k'
+    : (totalDelta >= 0 ? '+' : '') + totalDelta.toFixed(2);
+  candleTotalDelta.innerHTML = `Total \u0394 (${displayCandles.length}c): ${tdStr} BTC`;
 
   // ── v61: Footprint Markers ───────────────────────────────────────────────
   renderFpMarkers(ctx, w, h, minPrice, maxPrice, yScale);
@@ -3752,7 +3756,7 @@ function restorePersistedData() {
   try {
     const saved = JSON.parse(localStorage.getItem(LS_CVD) || '[]');
     if (saved.length) {
-      const liveCVDBucket = Math.floor(Date.now() / cvdInterval) * cvdInterval + cvdInterval;
+      const liveCVDBucket = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000) + (candleIntervalMin * 60000);
       for (const b of saved) {
         if (b.time < liveCVDBucket && !cvdData.some(x => x.time === b.time)) {
           cvdData.push(b);
@@ -3818,13 +3822,17 @@ const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes(
 
 // ── PATCH accumulateCVD to auto-save whenever a CVD bar closes ───────────
 function accumulateCVD() {
-  const now = Date.now(), nextClose = lastCVDTime + cvdInterval;
+  // Close CVD bars at candleIntervalMin boundaries (same resolution as FP candles).
+  // Using cvdInterval (1m) while seeded bars are at 15m creates a 15× scale mismatch.
+  const candleMs  = candleIntervalMin * 60 * 1000;
+  const now       = Date.now();
+  const nextClose = Math.floor(lastCVDTime / candleMs) * candleMs + candleMs;
   if (now >= nextClose) {
     const lp = priceHistory.length ? priceHistory[priceHistory.length-1] : 0;
     cvdData.push({ time: nextClose, price: lp, buy: cvdBuyTemp, sell: cvdSellTemp });
     cvdBuyTemp = 0; cvdSellTemp = 0;
     lastCVDTime = nextClose;
-    if (cvdData.length > 1500) cvdData.shift(); // v71: raised from 300 to cover 15m lookback
+    if (cvdData.length > 1500) cvdData.shift();
     persistCVD();
   }
 }
@@ -4211,7 +4219,8 @@ function seedHistoricalCandles(rows) {
   _seedingInProgress = true;
 
   const liveBoundary  = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
-  const liveCVDBucket = Math.floor(Date.now() / cvdInterval) * cvdInterval + cvdInterval;
+  const candleMs      = candleIntervalMin * 60000;
+  const liveCVDBucket = Math.floor(Date.now() / candleMs) * candleMs + candleMs;
 
   for (const row of rows) {
     const startTime = new Date(row.candle_time).getTime();
@@ -4464,7 +4473,7 @@ async function bootstrap() {
   setHistProgress(3, 'Initialising state…');
   initCandles();
   fpLogNextTime = nextClockBoundary(fpLogWindowMs);
-  lastCVDTime   = Math.floor(Date.now() / cvdInterval) * cvdInterval;
+  lastCVDTime   = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
   restorePersistedData();
   resizeCandlestickCanvas();
   setTimeout(resizeCandlestickCanvas, 300);
