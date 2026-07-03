@@ -2445,7 +2445,41 @@ let cvdBarMap=[], cvdUserScrolled=false, cvdLastRenderedCount=0;
 cvdContainer.addEventListener("scroll",()=>{ cvdUserScrolled = !(cvdContainer.scrollLeft+cvdContainer.clientWidth>=cvdCanvas.width-20); });
 cvdContainer.addEventListener("mousemove",e=>{ const rect=cvdCanvas.getBoundingClientRect(), mouseX=e.clientX-rect.left+cvdContainer.scrollLeft; const hit=cvdBarMap.find(b=>mouseX>=b.x&&mouseX<b.x+b.w); if(hit){ const d=cvdData[hit.i], bd=(d.buy-d.sell).toFixed(2), t=new Date(d.time), ts=t.getHours().toString().padStart(2,"0")+":"+t.getMinutes().toString().padStart(2,"0"); cvdTooltip.style.display="block"; cvdTooltip.style.left=(e.clientX+10)+"px"; cvdTooltip.style.top=(e.clientY-28)+"px"; cvdTooltip.innerHTML=ts+" &nbsp;|&nbsp;<span style='color:#00ff88'>B:"+d.buy.toFixed(1)+"</span> <span style='color:#ff4d4d'>S:"+d.sell.toFixed(1)+"</span> <span style='color:"+(+bd>=0?"#00ff88":"#ff4d4d")+"'>\u0394"+bd+"</span>"; } else cvdTooltip.style.display="none"; });
 cvdContainer.addEventListener("mouseleave",()=>cvdTooltip.style.display="none");
-function renderCVD(){ if(!cvdData.length) return; const BAR_W=8, GAP=1, BAR_MAX_H=80, TOTAL_W=cvdData.length*(BAR_W+GAP), H=220, ZERO_Y=Math.floor(H/2); const needFullRebuild=cvdData.length!==cvdLastRenderedCount; if(needFullRebuild){ cvdCanvas.width=Math.max(TOTAL_W,cvdContainer.clientWidth); cvdCanvas.height=H; cvdLastRenderedCount=cvdData.length; } const ctx=cvdCtx; ctx.clearRect(0,0,cvdCanvas.width,H); ctx.fillStyle="#12171f"; ctx.fillRect(0,0,cvdCanvas.width,H); ctx.strokeStyle="#444"; ctx.beginPath(); ctx.moveTo(0,ZERO_Y); ctx.lineTo(cvdCanvas.width,ZERO_Y); ctx.stroke(); const zoneCluster={}; for(const d of cvdData){ const pk=(Math.round(d.price/tickSize)*tickSize).toFixed(tickDecimals); zoneCluster[pk]=(zoneCluster[pk]||0)+(d.buy-d.sell); } const maxCD=Object.values(zoneCluster).reduce((m,v)=>Math.max(m,Math.abs(v)),1); const cvdStrongZones=new Set(Object.keys(zoneCluster).filter(p=>Math.abs(zoneCluster[p])>=maxCD*0.6)); const maxDelta=cvdData.reduce((m,x)=>Math.max(m,Math.abs(x.buy-x.sell)),1); function pdiv(endIdx,win){ if(endIdx<win) return null; const s=endIdx-win; let pd=0; for(let k=s;k<=endIdx;k++) pd+=(cvdData[k].buy-cvdData[k].sell); const pc=cvdData[endIdx].price-cvdData[s].price; if(pc<0&&pd>0) return "bullish"; if(pc>0&&pd<0) return "bearish"; return null; } cvdBarMap=[]; let runningDelta=0, periodDelta1h=0, periodDelta15m=0, periodDelta5m=0; cvdData.forEach((barData,i)=>{ const barDelta=barData.buy-barData.sell; const bt=barData.time, min=new Date(bt).getMinutes(), is1h=min===0, is15m=!is1h&&min%15===0, is5m=!is1h&&!is15m&&min%5===0; if(is1h){ periodDelta1h=0; periodDelta15m=0; periodDelta5m=0; } else if(is15m){ periodDelta15m=0; periodDelta5m=0; } else if(is5m){ periodDelta5m=0; } runningDelta+=barDelta; periodDelta1h+=barDelta; periodDelta15m+=barDelta; periodDelta5m+=barDelta; const x=i*(BAR_W+GAP); cvdBarMap.push({x,w:BAR_W,i}); const norm=Math.abs(barDelta)/maxDelta, barH=norm<0.001?0:Math.max(2,Math.round(norm*BAR_MAX_H)); ctx.fillStyle=barDelta>=0?"#00ff88":"#ff4d4d"; if(barDelta>=0) ctx.fillRect(x,ZERO_Y-barH,BAR_W,barH); else ctx.fillRect(x,ZERO_Y,BAR_W,barH); const pk=(Math.round(barData.price/tickSize)*tickSize).toFixed(tickDecimals); if(cvdStrongZones.has(pk)){ ctx.fillStyle="rgba(255,255,0,0.5)"; ctx.fillRect(x,ZERO_Y-2,BAR_W,4); } if(is1h||is15m||is5m){ ctx.strokeStyle=is1h?"#ffffff":is15m?"#888":"#444"; ctx.lineWidth=1; const mt=is1h?0:is15m?H*0.1:H*0.25, mb=is1h?H:is15m?H*0.9:H*0.75; ctx.beginPath(); ctx.moveTo(x,mt); ctx.lineTo(x,mb); ctx.stroke(); const lt=new Date(bt), ts=lt.getHours().toString().padStart(2,"0")+":"+lt.getMinutes().toString().padStart(2,"0"); ctx.font="bold 7px monospace"; ctx.fillStyle="#aaaaaa"; ctx.textAlign="center"; ctx.fillText(ts,x+BAR_W/2,is1h?10:is15m?14:20); const pd=is1h?periodDelta1h:is15m?periodDelta15m:periodDelta5m; const dStr=(pd>=0?"+":"")+(Math.abs(pd)>=1000?(pd/1000).toFixed(1)+"k":pd.toFixed(0)); ctx.fillStyle=pd>=0?"#00ff88":"#ff4d4d"; ctx.fillText(dStr,x+BAR_W/2,is1h?18:is15m?22:28); const winBars=is1h?60:15, pDiv=pdiv(i,winBars); if(pDiv){ const bl=is1h?"1HD":"15D", bc=pDiv==="bullish"?"#00ffcc":"#ff6655"; ctx.fillStyle=bc; ctx.fillRect(x-1,is1h?20:is15m?24:30,20,10); ctx.fillStyle="#fff"; ctx.font="bold 6px monospace"; ctx.textAlign="center"; ctx.fillText(bl,x+9,is1h?28:is15m?32:38); } } if(cvdShowMarkers){ let divergence=null; if(i>=10){ const prev=cvdData[i-10], dn=barDelta, dp=prev.buy-prev.sell; if(barData.price>prev.price&&dn<dp) divergence="bearish"; else if(barData.price<prev.price&&dn>dp) divergence="bullish"; } const recent=cvdData.slice(Math.max(0,i-10),i), avg=recent.length?recent.reduce((s,x)=>s+Math.abs(x.buy-x.sell),0)/recent.length:0; const isSpike=avg>0&&Math.abs(barDelta)>avg*2; let exhaustion=false; if(i>0){ const prev=cvdData[i-1]; if(Math.abs(prev.buy-prev.sell)>0&&Math.abs(barDelta)<Math.abs(prev.buy-prev.sell)*0.3) exhaustion=true; } let absorption=false; if(i>0){ const prev=cvdData[i-1]; if((barData.buy>prev.buy&&barData.sell<prev.sell)||(barData.sell>prev.sell&&barData.buy<prev.buy)) absorption=true; } const iBull=barData.buy>barData.sell&&barData.buy>=barData.sell*imbalanceRatio; const iBear=barData.sell>barData.buy&&barData.sell>=barData.buy*imbalanceRatio; const markers=[]; if(isSpike) markers.push(["S","#ffdd00"]); if(divergence) markers.push(["D",barDelta>=0?"#00ffcc":"#ff6655"]); if(iBull) markers.push(["I","#aaffaa"]); else if(iBear) markers.push(["I","#ffaaaa"]); if(exhaustion) markers.push(["E","#ff9900"]); if(absorption) markers.push(["A","#cc88ff"]); if(markers.length){ const topY=barDelta>=0?ZERO_Y-barH-(markers.length*9)-2:ZERO_Y+barH+2; markers.forEach(([txt,col],mi)=>{ const my=topY+mi*9; ctx.fillStyle=col; if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x-1,my,BAR_W+2,8,2); ctx.fill(); } else ctx.fillRect(x-1,my,BAR_W+2,8); ctx.fillStyle="#fff"; ctx.font="bold 7px monospace"; ctx.textAlign="center"; ctx.fillText(txt,x+BAR_W/2,my+7); }); } } }); if(!cvdUserScrolled) cvdContainer.scrollLeft=cvdCanvas.width; }
+function renderCVD(){ if(!cvdData.length) return; const BAR_W=8, GAP=1, BAR_MAX_H=80, TOTAL_W=cvdData.length*(BAR_W+GAP), H=220, ZERO_Y=Math.floor(H/2); const needFullRebuild=cvdData.length!==cvdLastRenderedCount; if(needFullRebuild){ cvdCanvas.width=Math.max(TOTAL_W,cvdContainer.clientWidth); cvdCanvas.height=H; cvdLastRenderedCount=cvdData.length; } const ctx=cvdCtx; ctx.clearRect(0,0,cvdCanvas.width,H); ctx.fillStyle="#12171f"; ctx.fillRect(0,0,cvdCanvas.width,H); ctx.strokeStyle="#444"; ctx.beginPath(); ctx.moveTo(0,ZERO_Y); ctx.lineTo(cvdCanvas.width,ZERO_Y); ctx.stroke(); const zoneCluster={}; for(const d of cvdData){ const pk=(Math.round(d.price/tickSize)*tickSize).toFixed(tickDecimals); zoneCluster[pk]=(zoneCluster[pk]||0)+(d.buy-d.sell); } const maxCD=Object.values(zoneCluster).reduce((m,v)=>Math.max(m,Math.abs(v)),1); const cvdStrongZones=new Set(Object.keys(zoneCluster).filter(p=>Math.abs(zoneCluster[p])>=maxCD*0.6)); const maxDelta=cvdData.reduce((m,x)=>Math.max(m,Math.abs(x.buy-x.sell)),1); function pdiv(endIdx,win){ if(endIdx<win) return null; const s=endIdx-win; let pd=0; for(let k=s;k<=endIdx;k++) pd+=(cvdData[k].buy-cvdData[k].sell); const pc=cvdData[endIdx].price-cvdData[s].price; if(pc<0&&pd>0) return "bullish"; if(pc>0&&pd<0) return "bearish"; return null; }
+  const barsPerHour = Math.round(60 / candleIntervalMin);
+  const barsper15m  = Math.round(15 / candleIntervalMin);
+  cvdBarMap=[]; let runningDelta=0, periodDelta1h=0, periodDelta15m=0, periodDeltaCI=0;
+  cvdData.forEach((barData,i)=>{ const barDelta=barData.buy-barData.sell;
+    const bt=barData.time, min=new Date(bt).getMinutes();
+    const is1h  = min===0;
+    const is15m = !is1h && min%15===0;
+    const isCI  = !is1h && !is15m && candleIntervalMin<15 && min%candleIntervalMin===0;
+    if(is1h){ periodDelta1h=0; periodDelta15m=0; periodDeltaCI=0; }
+    else if(is15m){ periodDelta15m=0; periodDeltaCI=0; }
+    else if(isCI){ periodDeltaCI=0; }
+    runningDelta+=barDelta; periodDelta1h+=barDelta; periodDelta15m+=barDelta; periodDeltaCI+=barDelta;
+    const x=i*(BAR_W+GAP); cvdBarMap.push({x,w:BAR_W,i});
+    const norm=Math.abs(barDelta)/maxDelta, barH=norm<0.001?0:Math.max(2,Math.round(norm*BAR_MAX_H));
+    ctx.fillStyle=barDelta>=0?"#00ff88":"#ff4d4d";
+    if(barDelta>=0) ctx.fillRect(x,ZERO_Y-barH,BAR_W,barH); else ctx.fillRect(x,ZERO_Y,BAR_W,barH);
+    const pk=(Math.round(barData.price/tickSize)*tickSize).toFixed(tickDecimals);
+    if(cvdStrongZones.has(pk)){ ctx.fillStyle="rgba(255,255,0,0.5)"; ctx.fillRect(x,ZERO_Y-2,BAR_W,4); }
+    if(is1h||is15m||isCI){
+      ctx.strokeStyle=is1h?"#ffffff":is15m?"#888":"#444"; ctx.lineWidth=1;
+      const mt=is1h?0:is15m?H*0.1:H*0.25, mb=is1h?H:is15m?H*0.9:H*0.75;
+      ctx.beginPath(); ctx.moveTo(x,mt); ctx.lineTo(x,mb); ctx.stroke();
+      const lt=new Date(bt), ts=lt.getHours().toString().padStart(2,"0")+":"+lt.getMinutes().toString().padStart(2,"0");
+      ctx.font="bold 7px monospace"; ctx.fillStyle="#aaaaaa"; ctx.textAlign="center";
+      ctx.fillText(ts,x+BAR_W/2,is1h?10:is15m?14:20);
+      const pd=is1h?periodDelta1h:is15m?periodDelta15m:periodDeltaCI;
+      const dStr=(pd>=0?"+":"")+(Math.abs(pd)>=1000?(pd/1000).toFixed(1)+"k":pd.toFixed(0));
+      ctx.fillStyle=pd>=0?"#00ff88":"#ff4d4d";
+      ctx.fillText(dStr,x+BAR_W/2,is1h?18:is15m?22:28);
+      const winBars=is1h?barsPerHour:barsper15m, pDiv=pdiv(i,winBars);
+      if(pDiv){ const bl=is1h?"1HD":"15D", bc=pDiv==="bullish"?"#00ffcc":"#ff6655"; ctx.fillStyle=bc; ctx.fillRect(x-1,is1h?20:is15m?24:30,20,10); ctx.fillStyle="#fff"; ctx.font="bold 6px monospace"; ctx.textAlign="center"; ctx.fillText(bl,x+9,is1h?28:is15m?32:38); }
+    }
+    if(cvdShowMarkers){ let divergence=null; if(i>=10){ const prev=cvdData[i-10], dn=barDelta, dp=prev.buy-prev.sell; if(barData.price>prev.price&&dn<dp) divergence="bearish"; else if(barData.price<prev.price&&dn>dp) divergence="bullish"; } const recent=cvdData.slice(Math.max(0,i-10),i), avg=recent.length?recent.reduce((s,x)=>s+Math.abs(x.buy-x.sell),0)/recent.length:0; const isSpike=avg>0&&Math.abs(barDelta)>avg*2; let exhaustion=false; if(i>0){ const prev=cvdData[i-1]; if(Math.abs(prev.buy-prev.sell)>0&&Math.abs(barDelta)<Math.abs(prev.buy-prev.sell)*0.3) exhaustion=true; } let absorption=false; if(i>0){ const prev=cvdData[i-1]; if((barData.buy>prev.buy&&barData.sell<prev.sell)||(barData.sell>prev.sell&&barData.buy<prev.buy)) absorption=true; } const iBull=barData.buy>barData.sell&&barData.buy>=barData.sell*imbalanceRatio; const iBear=barData.sell>barData.buy&&barData.sell>=barData.buy*imbalanceRatio; const markers=[]; if(isSpike) markers.push(["S","#ffdd00"]); if(divergence) markers.push(["D",barDelta>=0?"#00ffcc":"#ff6655"]); if(iBull) markers.push(["I","#aaffaa"]); else if(iBear) markers.push(["I","#ffaaaa"]); if(exhaustion) markers.push(["E","#ff9900"]); if(absorption) markers.push(["A","#cc88ff"]); if(markers.length){ const topY=barDelta>=0?ZERO_Y-barH-(markers.length*9)-2:ZERO_Y+barH+2; markers.forEach(([txt,col],mi)=>{ const my=topY+mi*9; ctx.fillStyle=col; if(ctx.roundRect){ ctx.beginPath(); ctx.roundRect(x-1,my,BAR_W+2,8,2); ctx.fill(); } else ctx.fillRect(x-1,my,BAR_W+2,8); ctx.fillStyle="#fff"; ctx.font="bold 7px monospace"; ctx.textAlign="center"; ctx.fillText(txt,x+BAR_W/2,my+7); }); } }
+  }); if(!cvdUserScrolled) cvdContainer.scrollLeft=cvdCanvas.width; }
 
 // WebSockets (unchanged)
 let depthReconnectCount=0, tradesReconnectCount=0;
@@ -4380,36 +4414,20 @@ function seedHistoricalCandles(rows) {
     }
 
     // ── CVD: split candle volume across its constituent 1m CVD buckets ────────
-    // Each RPC row covers candleIntervalMin minutes. cvdInterval is 1m (60000ms).
-    // Collapsing 5m into one CVD bar loses bar count and shape.
-    // Split evenly: each 1m sub-bucket gets buy/sell ÷ numBuckets, close price
-    // assigned only to the last sub-bucket (matches live accumulateCVD behaviour).
+    // CVD — one entry per candle (matches FP pill resolution)
+    // Splitting into 1m sub-buckets divides buy/sell by numBuckets, compressing
+    // delta by 5× and making it impossible to match FP pill values.
     {
       const buyVol  = parseFloat(row.buy_vol);
       const sellVol = parseFloat(row.sell_vol);
       const closeP  = parseFloat(row.close);
-      const numBuckets = Math.max(1, Math.round(candleIntervalMin * 60000 / cvdInterval));
-      const buyPerBucket  = buyVol  / numBuckets;
-      const sellPerBucket = sellVol / numBuckets;
-
-      for (let bi = 0; bi < numBuckets; bi++) {
-        // Each sub-bucket closes at startTime + (bi+1) * cvdInterval
-        const subBucketTime = startTime + (bi + 1) * cvdInterval;
-        const isLastBucket  = bi === numBuckets - 1;
-
-        if (subBucketTime >= liveCVDBucket) {
-          // Belongs to the current open CVD bucket — accumulate into live temps
-          cvdBuyTemp  += buyPerBucket;
-          cvdSellTemp += sellPerBucket;
-        } else {
-          if (!cvdData.some(d => d.time === subBucketTime)) {
-            cvdData.push({
-              time:  subBucketTime,
-              price: isLastBucket ? closeP : closeP, // close used for all; only last is meaningful
-              buy:   buyPerBucket,
-              sell:  sellPerBucket
-            });
-          }
+      const candleCloseTime = startTime + candleIntervalMin * 60000;
+      if (candleCloseTime >= liveCVDBucket) {
+        cvdBuyTemp  += buyVol;
+        cvdSellTemp += sellVol;
+      } else {
+        if (!cvdData.some(d => d.time === candleCloseTime)) {
+          cvdData.push({ time: candleCloseTime, price: closeP, buy: buyVol, sell: sellVol });
         }
       }
     }
