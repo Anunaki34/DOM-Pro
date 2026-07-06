@@ -2273,7 +2273,7 @@ function renderBookmap() {
 }
 
 let _lastObRender=0;
-function render(){ adjustDepth(); updatePriceCenter(); computeDelta(); computeDominance(); if(!priceCenter) return; aggregateBookmapSlice(); renderBookmap(); renderCandles(); const now=Date.now(); if(now-_lastObRender>=1000){ renderOBPressure(); renderWhaleTable(); _lastObRender=now; } }
+function render(){ adjustDepth(); updatePriceCenter(); computeDelta(); computeDominance(); if(!priceCenter) return; aggregateBookmapSlice(); renderBookmap(); renderCandles(); renderCVD(); const now=Date.now(); if(now-_lastObRender>=1000){ renderOBPressure(); renderWhaleTable(); _lastObRender=now; } }
 
 // ── OB PRESSURE & PLR (unchanged) ────────────────────────────────────────
 // ── v68: Whale Orders Table ───────────────────────────────────────────────
@@ -2387,27 +2387,23 @@ function updateRangeDelta(){ let from=parseFloat(rangeFromInput.value), to=parse
 // accumulateCVD is defined in the persist engine above (auto-saves on each bar close)
 let cvdBarMap=[], cvdUserScrolled=false, cvdLastRenderedCount=0;
 cvdContainer.addEventListener("scroll",()=>{ cvdUserScrolled = !(cvdContainer.scrollLeft+cvdContainer.clientWidth>=cvdCanvas.width-20); });
-cvdContainer.addEventListener("mousemove",e=>{ const rect=cvdCanvas.getBoundingClientRect(), mouseX=e.clientX-rect.left; const hit=cvdBarMap.find(b=>mouseX>=b.x&&mouseX<b.x+b.w); if(hit){ const bd=(hit.buy-hit.sell).toFixed(2), t=new Date(hit.time), ts=t.getHours().toString().padStart(2,"0")+":"+t.getMinutes().toString().padStart(2,"0"); cvdTooltip.style.display="block"; cvdTooltip.style.left=(e.clientX+10)+"px"; cvdTooltip.style.top=(e.clientY-28)+"px"; cvdTooltip.innerHTML=ts+" &nbsp;|&nbsp;<span style='color:#00ff88'>B:"+hit.buy.toFixed(1)+"</span> <span style='color:#ff4d4d'>S:"+hit.sell.toFixed(1)+"</span> <span style='color:"+(+bd>=0?"#00ff88":"#ff4d4d")+"'>Δ"+bd+"</span>"; } else cvdTooltip.style.display="none"; });
+cvdContainer.addEventListener("mousemove",e=>{ const rect=cvdCanvas.getBoundingClientRect(),mouseX=e.clientX-rect.left; const hit=cvdBarMap.find(b=>mouseX>=b.x&&mouseX<b.x+b.w); if(hit){ const bd=(hit.buy-hit.sell).toFixed(2),t=new Date(hit.time), ts=t.getHours().toString().padStart(2,"0")+":"+t.getMinutes().toString().padStart(2,"0"); cvdTooltip.style.display="block"; cvdTooltip.style.left=(e.clientX+10)+"px"; cvdTooltip.style.top=(e.clientY-28)+"px"; cvdTooltip.innerHTML=ts+" &nbsp;|&nbsp;<span style='color:#00ff88'>B:"+hit.buy.toFixed(2)+"</span> <span style='color:#ff4d4d'>S:"+hit.sell.toFixed(2)+"</span> <span style='color:"+(+bd>=0?"#00ff88":"#ff4d4d")+"'>Δ"+bd+"</span>"; }else cvdTooltip.style.display="none";});
 cvdContainer.addEventListener("mouseleave",()=>cvdTooltip.style.display="none");
 function renderCVD() {
-  // Build CVD directly from candles[] + currentCandle.
-  // candles[] is populated by seedHistoricalCandles from the RPC — same
-  // buy_vol/sell_vol source as FP delta pills. No separate accumulation needed.
+  // Build CVD directly from candles[] + currentCandle every render frame.
+  // No separate accumulation — candles[] is the ground truth from RPC + live WS.
   const src = [...candles];
-  if (currentCandle && (!src.length || src[src.length-1].startTime !== currentCandle.startTime)) {
-    src.push(currentCandle);
-  }
+  if (currentCandle && (
+    !src.length || src[src.length - 1].startTime !== currentCandle.startTime
+  )) src.push(currentCandle);
   if (!src.length) return;
 
-  // Last 48 candles = 12 hours at 15m per bar
   const TOTAL_BARS = 48;
-  const bars = src.slice(-TOTAL_BARS);
-
-  const H = 220, ZERO_Y = Math.floor(H / 2);
-  const W = cvdContainer.clientWidth || 800;
+  const bars  = src.slice(-TOTAL_BARS);
+  const H     = 220, ZERO_Y = Math.floor(H / 2);
+  const W     = cvdContainer.clientWidth || 800;
   const BAR_W = Math.max(4, Math.floor(W / TOTAL_BARS));
 
-  // Always resize — never gate on count (gating caused compression)
   cvdCanvas.width  = W;
   cvdCanvas.height = H;
   cvdLastRenderedCount = bars.length;
@@ -2417,10 +2413,9 @@ function renderCVD() {
   ctx.fillStyle = '#12171f'; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, ZERO_Y); ctx.lineTo(W, ZERO_Y); ctx.stroke();
-
   if (!bars.length) return;
 
-  // 95th-pct maxDelta from visible window — prevents one outlier flattening others
+  // 95th-pct maxDelta — one outlier won't flatten everything else
   const deltas = bars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
   const maxDelta = deltas.length
     ? (deltas[Math.floor(deltas.length * 0.95)] || deltas[deltas.length - 1])
@@ -2431,30 +2426,27 @@ function renderCVD() {
 
   bars.forEach((candle, i) => {
     const delta = candle.buyVol - candle.sellVol;
-    const x = i * BAR_W;
-    // Use startTime (candle open) for hour boundary detection
-    const d = new Date(candle.startTime);
-    const is1h = d.getMinutes() === 0;
+    const x     = i * BAR_W;
+    const d     = new Date(candle.startTime);
+    const is1h  = d.getMinutes() === 0;
 
-    // Reset BEFORE accumulating so label shows completed prior hour
     if (is1h) periodDelta1h = 0;
     periodDelta1h += delta;
 
-    // Store full bar data in cvdBarMap for tooltip
     cvdBarMap.push({ x, w: BAR_W, i,
       buy: candle.buyVol, sell: candle.sellVol,
-      time: candle.startTime, price: candle.close });
+      time: candle.startTime, price: candle.close || 0 });
 
     const norm = Math.abs(delta) / maxDelta;
-    const barH = norm < 0.001 ? 0 : Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
+    const barH = norm < 0.001 ? 0
+      : Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
 
     ctx.fillStyle = delta >= 0 ? 'rgba(0,210,110,0.88)' : 'rgba(210,55,55,0.88)';
     if (delta >= 0) ctx.fillRect(x, ZERO_Y - barH, BAR_W - 1, barH);
     else            ctx.fillRect(x, ZERO_Y,         BAR_W - 1, barH);
 
-    // Delta value clipped inside bar
     if (barH >= 10 && BAR_W >= 14) {
-      const abs = Math.abs(delta);
+      const abs   = Math.abs(delta);
       const label = abs >= 1000
         ? (delta >= 0 ? '+' : '-') + (abs / 1000).toFixed(1) + 'k'
         : (delta >= 0 ? '+' : '') + delta.toFixed(0);
@@ -2471,7 +2463,6 @@ function renderCVD() {
       ctx.restore();
     }
 
-    // Hourly dashed marker + HH:00 + 1h period delta
     if (is1h) {
       ctx.save();
       ctx.strokeStyle = 'rgba(180,210,255,0.55)'; ctx.lineWidth = 1;
@@ -2481,7 +2472,7 @@ function renderCVD() {
       ctx.restore();
       ctx.font = 'bold 8px monospace'; ctx.fillStyle = '#aabbcc';
       ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
-      ctx.fillText(d.getHours().toString().padStart(2,'0') + ':00', x + BAR_W / 2, H - 8);
+      ctx.fillText(d.getHours().toString().padStart(2, '0') + ':00', x + BAR_W / 2, H - 8);
       const abs1h = Math.abs(periodDelta1h);
       const pd = (periodDelta1h >= 0 ? '+' : '') +
         (abs1h >= 1000 ? (periodDelta1h / 1000).toFixed(1) + 'k' : periodDelta1h.toFixed(0));
@@ -2597,8 +2588,8 @@ function deltaBaseline(n=30){ const len=deltaHistory.length; if(len<2) return 5;
 function evalDelta(){ const d=delta, label="Delta", base=deltaBaseline(30), strong=base*4, weak=base*1.5; if(d>strong) return {bull:2,bear:0,label,note:"+"+d.toFixed(1)+" (str)"}; else if(d>weak) return {bull:1,bear:0,label,note:"+"+d.toFixed(1)}; else if(d<-strong) return {bull:0,bear:2,label,note:d.toFixed(1)+" (str)"}; else if(d<-weak) return {bull:0,bear:1,label,note:d.toFixed(1)}; return {bull:0,bear:0,label,note:d.toFixed(1)}; }
 function evalOBPressure(){ if(!priceCenter) return {bull:0,bear:0,label:"OBP",note:"—"}; const half=obRange/2; let bid=0,ask=0; for(const k in orderBook.bids){ const p=+k; if(p>=priceCenter-half&&p<=priceCenter) bid+=orderBook.bids[k]; } for(const k in orderBook.asks){ const p=+k; if(p>=priceCenter&&p<=priceCenter+half) ask+=orderBook.asks[k]; } const ratio=(bid+ask)>0?bid/(bid+ask):0.5, label="OBP"; if(ratio>0.65) return {bull:2,bear:0,label,note:(ratio*100).toFixed(0)+"% bid"}; else if(ratio>0.55) return {bull:1,bear:0,label,note:(ratio*100).toFixed(0)+"% bid"}; else if(ratio<0.35) return {bull:0,bear:2,label,note:(ratio*100).toFixed(0)+"% bid"}; else if(ratio<0.45) return {bull:0,bear:1,label,note:(ratio*100).toFixed(0)+"% bid"}; return {bull:0,bear:0,label,note:(ratio*100).toFixed(0)+"% bid"}; }
 function evalWhaleWall(){ if(!priceCenter) return {bull:0,bear:0,label:"Whale",note:"—"}; const half=obRange/2; let cbd=Infinity,cbs=0,cad=Infinity,cas=0; for(const k in orderBook.bids){ const p=+k,q=orderBook.bids[k]; if(q>=bmMinWhale&&p<=priceCenter&&priceCenter-p<=half){ const d=priceCenter-p; if(d<cbd){ cbd=d; cbs=q; } } } for(const k in orderBook.asks){ const p=+k,q=orderBook.asks[k]; if(q>=bmMinWhale&&p>=priceCenter&&p-priceCenter<=half){ const d=p-priceCenter; if(d<cad){ cad=d; cas=q; } } } const label="Whale"; if(cbd<half*0.1&&cbs>=bmMinWhale*2) return {bull:2,bear:0,label,note:cbs.toFixed(1)+" bid@"+cbd.toFixed(0)}; if(cbd<half*0.25&&cbs>=bmMinWhale) return {bull:1,bear:0,label,note:cbs.toFixed(1)+" bid"}; if(cad<half*0.1&&cas>=bmMinWhale*2) return {bull:0,bear:2,label,note:cas.toFixed(1)+" ask@"+cad.toFixed(0)}; if(cad<half*0.25&&cas>=bmMinWhale) return {bull:0,bear:1,label,note:cas.toFixed(1)+" ask"}; return {bull:0,bear:0,label,note:"none close"}; }
-function evalCVDTrend(){ const src2=[...candles]; if(currentCandle) src2.push(currentCandle); if(src2.length<5) return {bull:0,bear:0,label:"CVD",note:"—"}; const slice=src2.slice(-5), net=slice.reduce((s,c)=>s+(c.buyVol-c.sellVol),0); const lb=src2.slice(-20), avgMag=lb.length?lb.reduce((s,c)=>s+Math.abs(c.buyVol-c.sellVol),0)/lb.length:10; const strong=avgMag*3, weak=avgMag, label="CVD"; if(net>strong) return {bull:2,bear:0,label,note:"+"+net.toFixed(0)}; else if(net>weak) return {bull:1,bear:0,label,note:"+"+net.toFixed(0)}; else if(net<-strong) return {bull:0,bear:2,label,note:net.toFixed(0)}; else if(net<-weak) return {bull:0,bear:1,label,note:net.toFixed(0)}; return {bull:0,bear:0,label,note:net.toFixed(0)}; }
-function evalCVDDivergence(){ const label="CVD-Div"; const src2=[...candles]; if(currentCandle) src2.push(currentCandle); if(src2.length<15) return {bull:0,bear:0,label,note:"—"}; const n=src2.length-1, s=Math.max(0,n-15); let pd=0; for(let k=s;k<=n;k++) pd+=(src2[k].buyVol-src2[k].sellVol); const lb=src2.slice(-30), avgMag=lb.length?lb.reduce((a,c)=>a+Math.abs(c.buyVol-c.sellVol),0)/lb.length:10; const thr=avgMag*15*0.20, pc=src2[n].close-src2[s].close; if(pc<0&&pd>thr) return {bull:2,bear:0,label,note:"↑ hidden bull"}; if(pc>0&&pd<-thr) return {bull:0,bear:2,label,note:"↓ hidden bear"}; return {bull:0,bear:0,label,note:"none"}; }
+function evalCVDTrend(){ const s2=[...candles]; if(currentCandle) s2.push(currentCandle); if(s2.length<5) return {bull:0,bear:0,label:"CVD",note:"—"}; const sl=s2.slice(-5),net=sl.reduce((s,c)=>s+(c.buyVol-c.sellVol),0); const lb=s2.slice(-20),avg=lb.length?lb.reduce((s,c)=>s+Math.abs(c.buyVol-c.sellVol),0)/lb.length:10; const label="CVD"; if(net>avg*3) return {bull:2,bear:0,label,note:"+"+net.toFixed(0)}; if(net>avg)   return {bull:1,bear:0,label,note:"+"+net.toFixed(0)}; if(net<-avg*3) return {bull:0,bear:2,label,note:net.toFixed(0)}; if(net<-avg)   return {bull:0,bear:1,label,note:net.toFixed(0)}; return {bull:0,bear:0,label,note:net.toFixed(0)}; }
+function evalCVDDivergence(){ const label="CVD-Div"; const s2=[...candles]; if(currentCandle) s2.push(currentCandle); if(s2.length<15) return {bull:0,bear:0,label,note:"—"}; const n=s2.length-1,s=Math.max(0,n-15); let pd=0; for(let k=s;k<=n;k++) pd+=(s2[k].buyVol-s2[k].sellVol); const lb=s2.slice(-30),avg=lb.length?lb.reduce((a,c)=>a+Math.abs(c.buyVol-c.sellVol),0)/lb.length:10; const thr=avg*15*0.20,pc=s2[n].close-s2[s].close; if(pc<0&&pd>thr) return {bull:2,bear:0,label,note:"↑ hidden bull"}; if(pc>0&&pd<-thr) return {bull:0,bear:2,label,note:"↓ hidden bear"}; return {bull:0,bear:0,label,note:"none"}; }
 function evalCandleImbalance(){ if(!currentCandle) return {bull:0,bear:0,label:"Candle",note:"—"}; const tot=currentCandle.buyVol+currentCandle.sellVol; if(tot<0.01) return {bull:0,bear:0,label:"Candle",note:"thin"}; const buyRatio=currentCandle.buyVol/tot; if(buyRatio>0.70) return {bull:2,bear:0,label:"Candle",note:(buyRatio*100).toFixed(0)+"% buy"}; if(buyRatio>0.55) return {bull:1,bear:0,label:"Candle",note:(buyRatio*100).toFixed(0)+"% buy"}; if(buyRatio<0.30) return {bull:0,bear:2,label:"Candle",note:(buyRatio*100).toFixed(0)+"% buy"}; if(buyRatio<0.45) return {bull:0,bear:1,label:"Candle",note:(buyRatio*100).toFixed(0)+"% buy"}; return {bull:0,bear:0,label:"Candle",note:(buyRatio*100).toFixed(0)+"% buy"}; }
 function evalHeatmapMomentum(){ if(!priceCenter) return {bull:0,bear:0,label:"Heat",note:"—"}; const range=tickSize*50; let net=0,cnt=0,sumAbs=0; for(const k in heatmapData){ const hm=heatmapData[k]; if(!hm||typeof hm!=="object") continue; const p=parseFloat(k); if(Math.abs(p-priceCenter)<=range){ const v=(hm.buy-hm.sell); net+=v; sumAbs+=(hm.buy+hm.sell); cnt++; } } const label="Heat"; if(!cnt) return {bull:0,bear:0,label,note:"—"}; const avgAbs=sumAbs/cnt, thr=avgAbs*0.30; if(net>thr) return {bull:1,bear:0,label,note:"+"+net.toFixed(0)}; else if(net<-thr) return {bull:0,bear:1,label,note:net.toFixed(0)}; return {bull:0,bear:0,label,note:net.toFixed(0)}; }
 function evalRecentMomentum(){ const cutoff=Date.now()-5000; let buy=0,sell=0; for(let i=deltaHistory.length-1;i>=0;i--){ const d=deltaHistory[i]; if(d.time<cutoff) break; if(d.value>0) buy+=d.value; else sell+=Math.abs(d.value); } const tot=buy+sell, label="Mom5s"; if(!tot) return {bull:0,bear:0,label,note:"—"}; const ratio=buy/tot; if(ratio>0.70) return {bull:2,bear:0,label,note:(ratio*100).toFixed(0)+"%B"}; else if(ratio>0.55) return {bull:1,bear:0,label,note:(ratio*100).toFixed(0)+"%B"}; else if(ratio<0.30) return {bull:0,bear:2,label,note:(ratio*100).toFixed(0)+"%B"}; else if(ratio<0.45) return {bull:0,bear:1,label,note:(ratio*100).toFixed(0)+"%B"}; return {bull:0,bear:0,label,note:(ratio*100).toFixed(0)+"%B"}; }
@@ -4255,7 +4246,7 @@ function seedHistoricalEMA() {
 
 // ── SUPABASE CONFIG ───────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://mol1.fossvps.org:48101';
-const HIST_LOOKBACK_MS = 12 * 60 * 60 * 1000; // 12 hours — feeds 48 CVD bars
+const HIST_LOOKBACK_MS = 12 * 60 * 60 * 1000; // 12 hours = 48 CVD bars
 const HIST_PAGE_SIZE   = 1000;
 const HIST_MAX_PAGES   = 50;
 
@@ -4615,7 +4606,7 @@ async function bootstrap() {
   // ── Phase 9  T+1000ms: CVD + fpLog timer ─────────────────────────────
   // CVD needs a few trades to flow before accumulation is meaningful.
   setTimeout(() => {
-    setInterval(() => { accumulateCVD(); renderCVD(); updateFpLogTimer(); }, 250);
+    setInterval(() => { updateFpLogTimer(); }, 250);
   }, 1000);
 
   // ── Phase 10  T+2000ms: signal engine ────────────────────────────────
