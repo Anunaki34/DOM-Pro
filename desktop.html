@@ -558,6 +558,17 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
 #trMatchCount {
   margin-left: auto; color: #2a5a7a; font-size: 8px;
 }
+
+/* ── Aggression Bar ─────────────────────────────────────────── */
+#aggrBarSection { margin:6px 0 2px 0; }
+#aggrBarTitle   { font-size:9px; color:#556; letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
+#aggrBarWrap    { width:340px; height:8px; background:#1a2233; border-radius:4px; overflow:hidden; display:flex; margin:0 auto 2px auto; }
+#aggrBuyBar     { height:100%; background:linear-gradient(90deg,#005522,#00cc66); transition:width 0.3s ease; }
+#aggrSellBar    { height:100%; background:linear-gradient(90deg,#cc2200,#661100); transition:width 0.3s ease; }
+#aggrLabels     { display:flex; justify-content:space-between; width:340px; margin:0 auto; font-size:9px; font-family:monospace; }
+#aggrBuyLabel   { color:#00cc66; }
+#aggrSellLabel  { color:#cc4422; text-align:right; }
+#aggrMomentum   { text-align:center; font-size:9px; font-family:monospace; color:#7a8a9a; margin-top:2px; }
 </style>
 </head>
 <body>
@@ -668,6 +679,20 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
           <span id="obAskLabel" style="color:#ff4d4d;">ASK</span>
         </div>
         <div id="obBarWrap"><div id="obBidBar" style="width:50%;"></div><div id="obAskBar" style="width:50%;"></div></div>
+
+        <!-- Buyer / Seller Aggression Bar -->
+        <div id="aggrBarSection">
+          <div id="aggrBarTitle">Trade Aggression (60s)</div>
+          <div id="aggrBarWrap">
+            <div id="aggrBuyBar"  style="width:50%;"></div>
+            <div id="aggrSellBar" style="width:50%;"></div>
+          </div>
+          <div id="aggrLabels">
+            <span id="aggrBuyLabel">BUY 50%</span>
+            <span id="aggrSellLabel">50% SELL</span>
+          </div>
+          <div id="aggrMomentum">— momentum —</div>
+        </div>
         <div id="obRangeLine">Scanning &mdash;</div>
         <div id="obWhaleAlert" style="color:#888;"></div>
         <div id="obNarrative"></div>
@@ -878,7 +903,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
     <span>&#9670; CVD Histogram</span>
     <span style="display:flex; align-items:center; gap:8px;">
       <label style="cursor:pointer; display:flex; align-items:center; gap:3px;" onclick="event.stopPropagation()">
-        <input type="checkbox" id="cvdShowMarkersToggle" checked> Show Markers
+        <span style="font-size:9px;color:#445;font-family:monospace;margin-left:4px;">next bar</span><div style="display:inline-block;vertical-align:middle;width:56px;height:4px;background:#1a2233;border-radius:2px;margin-left:5px;overflow:hidden;"><div id="cvdProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#003366,#0077cc);border-radius:2px;"></div></div>
       </label>
       <span class="ptb-arrow">&#9660;</span>
     </span>
@@ -977,9 +1002,7 @@ const priceAxisCanvas = document.getElementById("priceAxisCanvas"), priceAxisCtx
 const candleCrosshairCanvas = document.getElementById("candleCrosshair"), crosshairCtx = candleCrosshairCanvas.getContext("2d");
 const candleTotalDelta = document.getElementById("candleTotalDelta"), candleIntervalInput = document.getElementById("candleInterval");
 const candleVisibleCountInput = document.getElementById("candleVisibleCount"), candleHoverTooltip = document.getElementById("candleHoverTooltip");
-const cvdShowMarkersToggle = document.getElementById('cvdShowMarkersToggle');
-let cvdShowMarkers = true;
-if (cvdShowMarkersToggle) cvdShowMarkersToggle.addEventListener('change', e => { cvdShowMarkers = e.target.checked; renderCVD(); });
+let cvdShowMarkers = false;
 
 // v53: store candle rendering range for accurate hover tooltip
 let candleMinPrice = 0, candleMaxPrice = 0;
@@ -2273,10 +2296,97 @@ function renderBookmap() {
 }
 
 let _lastObRender=0;
-function render(){ adjustDepth(); updatePriceCenter(); computeDelta(); computeDominance(); if(!priceCenter) return; aggregateBookmapSlice(); renderBookmap(); renderCandles(); renderCVD(); const now=Date.now(); if(now-_lastObRender>=1000){ renderOBPressure(); renderWhaleTable(); _lastObRender=now; } }
+function render(){ adjustDepth(); updatePriceCenter(); computeDelta(); computeDominance(); if(!priceCenter) return; aggregateBookmapSlice(); renderBookmap(); renderCandles(); renderCVD(); renderAggressionBar(); const now=Date.now(); if(now-_lastObRender>=1000){ renderOBPressure(); renderWhaleTable(); _lastObRender=now; } }
 
 // ── OB PRESSURE & PLR (unchanged) ────────────────────────────────────────
 // ── v68: Whale Orders Table ───────────────────────────────────────────────
+
+// ── Aggression Sound Alert ───────────────────────────────────────────────────
+// Plays a short tone when buyer or seller aggression crosses 70% threshold.
+let _aggrSoundCtx = null;
+let _aggrLastSound = 0;
+let _aggrLastSide  = '';
+
+function playAggrTone(isBuy) {
+  const now = Date.now();
+  const side = isBuy ? 'buy' : 'sell';
+  if (now - _aggrLastSound < 5000 && _aggrLastSide === side) return; // throttle 5s per side
+  _aggrLastSound = now;
+  _aggrLastSide  = side;
+  try {
+    if (!_aggrSoundCtx) _aggrSoundCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const ctx = _aggrSoundCtx;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    // Buy = higher pitch ascending, Sell = lower pitch descending
+    osc.frequency.setValueAtTime(isBuy ? 660 : 330, ctx.currentTime);
+    osc.frequency.linearRampToValueAtTime(isBuy ? 880 : 220, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.18, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.25);
+  } catch(e) {}
+}
+// ── Buyer/Seller Aggression Bar — independent of OBP settings ───────────────
+// Reads deltaHistory (live trade flow) over a rolling 60s window.
+// Buyer aggression = market buy trades (positive delta entries).
+// Seller aggression = market sell trades (negative delta entries).
+function renderAggressionBar() {
+  const aggrBuyBar   = document.getElementById('aggrBuyBar');
+  const aggrSellBar  = document.getElementById('aggrSellBar');
+  const aggrBuyLbl   = document.getElementById('aggrBuyLabel');
+  const aggrSellLbl  = document.getElementById('aggrSellLabel');
+  const aggrMom      = document.getElementById('aggrMomentum');
+  if (!aggrBuyBar) return;
+
+  const now  = Date.now();
+  const win60 = now - 60000;
+  const win5  = now -  5000;
+
+  let buy60 = 0, sell60 = 0, buy5 = 0, sell5 = 0;
+  for (let i = deltaHistory.length - 1; i >= 0; i--) {
+    const d = deltaHistory[i];
+    if (d.time < win60) break;
+    if (d.value > 0) { buy60  += d.value;  if (d.time >= win5) buy5  += d.value; }
+    else             { sell60 += Math.abs(d.value); if (d.time >= win5) sell5 += Math.abs(d.value); }
+  }
+
+  const tot60 = buy60 + sell60 || 1;
+  const buyPct  = (buy60  / tot60 * 100);
+  const sellPct = (sell60 / tot60 * 100);
+
+  aggrBuyBar.style.width  = buyPct.toFixed(1)  + '%';
+  aggrSellBar.style.width = sellPct.toFixed(1) + '%';
+
+  aggrBuyLbl.textContent  = 'BUY '  + buyPct.toFixed(1)  + '%';
+  aggrSellLbl.textContent = sellPct.toFixed(1) + '% SELL';
+
+  // Colour intensity based on dominance
+  const ratio = buy60 / tot60;
+  aggrBuyBar.style.opacity  = (0.5 + ratio * 0.5).toFixed(2);
+  aggrSellBar.style.opacity = (0.5 + (1 - ratio) * 0.5).toFixed(2);
+
+  // 5s momentum label
+  const tot5 = buy5 + sell5;
+  if (tot5 > 0) {
+    const r5 = buy5 / tot5;
+    const mom = r5 > 0.65 ? '▲ Buyer momentum'
+              : r5 < 0.35 ? '▼ Seller momentum'
+              : '↔ Balanced';
+    const col = r5 > 0.65 ? '#00cc66' : r5 < 0.35 ? '#cc4422' : '#7a8a9a';
+    aggrMom.textContent  = mom;
+    aggrMom.style.color  = col;
+  } else {
+    aggrMom.textContent = '— no recent trades —';
+    aggrMom.style.color = '#556';
+  }
+  // Sound alert on strong aggression
+  if (ratio > 0.70) playAggrTone(true);
+  else if (ratio < 0.30) playAggrTone(false);
+}
+
 function renderWhaleTable() {
   const tbody   = document.getElementById('whaleTableBody');
   const minLabel = document.getElementById('whaleTableMinVal');
@@ -2387,7 +2497,7 @@ function updateRangeDelta(){ let from=parseFloat(rangeFromInput.value), to=parse
 // accumulateCVD is defined in the persist engine above (auto-saves on each bar close)
 let cvdBarMap=[], cvdUserScrolled=false, cvdLastRenderedCount=0;
 cvdContainer.addEventListener("scroll",()=>{ cvdUserScrolled = !(cvdContainer.scrollLeft+cvdContainer.clientWidth>=cvdCanvas.width-20); });
-cvdContainer.addEventListener("mousemove",e=>{ const rect=cvdCanvas.getBoundingClientRect(),mouseX=e.clientX-rect.left; const hit=cvdBarMap.find(b=>mouseX>=b.x&&mouseX<b.x+b.w); if(hit){ const bd=(hit.buy-hit.sell).toFixed(2),t=new Date(hit.time), ts=t.getHours().toString().padStart(2,"0")+":"+t.getMinutes().toString().padStart(2,"0"); cvdTooltip.style.display="block"; cvdTooltip.style.left=(e.clientX+10)+"px"; cvdTooltip.style.top=(e.clientY-28)+"px"; cvdTooltip.innerHTML=ts+" &nbsp;|&nbsp;<span style='color:#00ff88'>B:"+hit.buy.toFixed(2)+"</span> <span style='color:#ff4d4d'>S:"+hit.sell.toFixed(2)+"</span> <span style='color:"+(+bd>=0?"#00ff88":"#ff4d4d")+"'>Δ"+bd+"</span>"; }else cvdTooltip.style.display="none";});
+cvdContainer.addEventListener("mousemove",e=>{ const rect=cvdCanvas.getBoundingClientRect(),mouseX=e.clientX-rect.left; const hit=cvdBarMap.find(b=>mouseX>=b.x&&mouseX<b.x+b.w); if(hit){ const bd=(hit.buy-hit.sell).toFixed(2),t=new Date(hit.time), ts=t.getHours().toString().padStart(2,"0")+":"+t.getMinutes().toString().padStart(2,"0"); cvdTooltip.style.display="block"; const _ttw=cvdTooltip.offsetWidth||180; cvdTooltip.style.left=Math.max(0,e.clientX-_ttw-12)+"px"; cvdTooltip.style.top=(e.clientY-28)+"px"; cvdTooltip.innerHTML=ts+" &nbsp;|&nbsp;<span style='color:#00ff88'>B:"+hit.buy.toFixed(2)+"</span> <span style='color:#ff4d4d'>S:"+hit.sell.toFixed(2)+"</span> <span style='color:"+(+bd>=0?"#00ff88":"#ff4d4d")+"'>Δ"+bd+"</span>"; }else cvdTooltip.style.display="none";});
 cvdContainer.addEventListener("mouseleave",()=>cvdTooltip.style.display="none");
 function renderCVD() {
   // Build CVD directly from candles[] + currentCandle every render frame.
@@ -2437,13 +2547,19 @@ function renderCVD() {
       buy: candle.buyVol, sell: candle.sellVol,
       time: candle.startTime, price: candle.close || 0 });
 
+    const isLiveBar = i === bars.length - 1 && currentCandle && candle.startTime === currentCandle.startTime;
     const norm = Math.abs(delta) / maxDelta;
-    const barH = norm < 0.001 ? 0
+    // Show at least 2px stub for live bar so it's visible even with zero volume
+    const barH = norm < 0.001
+      ? (isLiveBar ? 2 : 0)
       : Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
 
-    ctx.fillStyle = delta >= 0 ? 'rgba(0,210,110,0.88)' : 'rgba(210,55,55,0.88)';
+    // Live bar pulses with slightly brighter colour so it's identifiable
+    const bullCol = isLiveBar ? 'rgba(0,255,130,0.95)' : 'rgba(0,210,110,0.88)';
+    const bearCol = isLiveBar ? 'rgba(255,80,80,0.95)'  : 'rgba(210,55,55,0.88)';
+    ctx.fillStyle = delta >= 0 ? bullCol : bearCol;
     if (delta >= 0) ctx.fillRect(x, ZERO_Y - barH, BAR_W - 1, barH);
-    else            ctx.fillRect(x, ZERO_Y,         BAR_W - 1, barH);
+    else            ctx.fillRect(x, ZERO_Y,         BAR_W - 1, Math.max(barH, isLiveBar ? 2 : 0));
 
     if (barH >= 10 && BAR_W >= 14) {
       const abs   = Math.abs(delta);
@@ -2482,6 +2598,25 @@ function renderCVD() {
     }
   });
 
+  // Cumulative CVD overlay line
+  if (bars.length > 1) {
+    let cum = 0;
+    const pts = bars.map((c,i)=>{ cum+=c.buyVol-c.sellVol; return {x:i*BAR_W+(BAR_W-1)/2,v:cum}; });
+    const lo=Math.min(...pts.map(p=>p.v)), hi=Math.max(...pts.map(p=>p.v)), rng=hi-lo||1;
+    const yT=6, yB=H-24;
+    ctx.save(); ctx.strokeStyle="rgba(255,210,60,0.80)"; ctx.lineWidth=1.5; ctx.lineJoin="round";
+    ctx.beginPath();
+    pts.forEach((p,i)=>{ const y=yB-((p.v-lo)/rng)*(yB-yT); i===0?ctx.moveTo(p.x,y):ctx.lineTo(p.x,y); });
+    ctx.stroke(); ctx.restore();
+  }
+  if (bars.length > 1) {
+    let cum=0; const pts=bars.map((c,i)=>{ cum+=c.buyVol-c.sellVol; return {x:i*BAR_W+(BAR_W-1)/2,v:cum}; });
+    const lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v)),rng=hi-lo||1;
+    const yT=6,yB=H-24;
+    ctx.save(); ctx.strokeStyle="rgba(255,210,60,0.80)"; ctx.lineWidth=1.5; ctx.lineJoin="round";
+    ctx.beginPath(); pts.forEach((p,i)=>{ const y=yB-((p.v-lo)/rng)*(yB-yT); i===0?ctx.moveTo(p.x,y):ctx.lineTo(p.x,y); });
+    ctx.stroke(); ctx.restore();
+  }
   cvdContainer.scrollLeft = 0;
 }
 
@@ -2506,7 +2641,7 @@ saveBtn.onclick=()=>{
     candleVisibleCount:candleVisibleCountInput.value, fpLogWindow:fpLogWindowInput.value, imbalance:imbalanceInput.value,
     deltaWindow:document.getElementById("deltaWindow").value, obRange:document.getElementById("obRangeInput").value,
     whaleDomOnly:whaleDomToggle.checked, heatmapToggle:heatmapToggle.checked, imbalanceToggle:imbalanceToggle.checked,
-    cvdShowMarkers:cvdShowMarkersToggle.checked, taMinScore:document.getElementById("taMinScore").value,
+    taMinScore:document.getElementById("taMinScore").value,
     taMinRR:document.getElementById("taMinRR").value, taPositionSize:document.getElementById("taPositionSize").value,
     taProxPct:document.getElementById("taProxPct").value, taScanRange:document.getElementById("taScanRange").value,
     taMinClusterVol:document.getElementById("taMinClusterVol").value,
@@ -2540,8 +2675,7 @@ loadBtn.onclick=()=>{ const s=JSON.parse(localStorage.getItem("domSettings")||"{
   if(s.whaleDomOnly!==undefined) whaleDomToggle.checked=s.whaleDomOnly;
   if(s.heatmapToggle!==undefined) heatmapToggle.checked=s.heatmapToggle;
   if(s.imbalanceToggle!==undefined) imbalanceToggle.checked=s.imbalanceToggle;
-  if(s.cvdShowMarkers!==undefined){ cvdShowMarkersToggle.checked=s.cvdShowMarkers; cvdShowMarkers=s.cvdShowMarkers; }
-  if(s.taMinScore) document.getElementById("taMinScore").value=s.taMinScore;
+    if(s.taMinScore) document.getElementById("taMinScore").value=s.taMinScore;
   if(s.taMinRR) document.getElementById("taMinRR").value=s.taMinRR;
   if(s.taPositionSize) document.getElementById("taPositionSize").value=s.taPositionSize;
   if(s.taProxPct) document.getElementById("taProxPct").value=s.taProxPct;
@@ -4607,6 +4741,19 @@ async function bootstrap() {
   // CVD needs a few trades to flow before accumulation is meaningful.
   setTimeout(() => {
     setInterval(() => { updateFpLogTimer(); }, 250);
+    (function cvdProg(){
+      const pb=document.getElementById("cvdProgressBar");
+      function t(){ if(pb){ const ms=candleIntervalMin*60000; pb.style.width=((Date.now()%ms)/ms*100).toFixed(1)+"%"; } requestAnimationFrame(t); } t();
+    })();
+
+    (function cvdProgress(){
+      const pb=document.getElementById("cvdProgressBar");
+      function tick(){
+        if(pb){ const ms=candleIntervalMin*60000; pb.style.width=((Date.now()%ms)/ms*100).toFixed(1)+"%"; }
+        requestAnimationFrame(tick);
+      } tick();
+    })();
+
   }, 1000);
 
   // ── Phase 10  T+2000ms: signal engine ────────────────────────────────
