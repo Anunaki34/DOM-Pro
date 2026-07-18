@@ -928,6 +928,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   <div class="panel-toggle-bar" style="cursor:pointer;" onclick="togglePanel('volumeProfileWrap')">
     <span>&#11035; Volume Profile</span>
     <span style="display:flex; align-items:center; gap:8px;">
+      <span id="vpLastFetchedLabel" style="font-size:8px;color:#3a5a7a;font-family:monospace;"></span>
       <label style="cursor:pointer; display:flex; align-items:center; gap:3px; font-size:9px; color:#8aaabb; font-family:monospace;" onclick="event.stopPropagation()">
         <input type="checkbox" id="vpShowProfileToggle" checked style="cursor:pointer;"> Show Profile
       </label>
@@ -2766,7 +2767,13 @@ function renderCVD() {
 // Fetches the last-24h buy/sell volume-by-price levels from the
 // get_volume_profile RPC and stores them in volumeProfileData.
 let vpBarMap = []; // [{y, rowH, price, buy, sell, total}, ...] for hover hit-testing
+let vpFetchInFlight = false, vpLastFetchedAt = 0;
+const VP_AUTO_REFRESH_MS = 20000; // v88: periodic auto-refetch, was manual-only before
 async function fetchVolumeProfile() {
+  if (vpFetchInFlight) return; // don't stack overlapping requests if one's slow
+  vpFetchInFlight = true;
+  const btn = document.getElementById('vpRefreshBtn');
+  if (btn) btn.style.opacity = '0.5';
   try {
     const resp = await fetch(
       `${SUPABASE_URL}/rpc/get_volume_profile`,
@@ -2775,11 +2782,25 @@ async function fetchVolumeProfile() {
     if (!resp.ok) throw new Error(`get_volume_profile HTTP ${resp.status}`);
     const rows = await resp.json();
     volumeProfileData = Array.isArray(rows) ? rows : [];
+    vpLastFetchedAt = Date.now();
+    updateVpLastFetchedLabel();
     renderVolumeProfile();
   } catch (err) {
     console.warn('[VolumeProfile] fetchVolumeProfile failed:', err);
+  } finally {
+    vpFetchInFlight = false;
+    if (btn) btn.style.opacity = '1';
   }
 }
+function updateVpLastFetchedLabel() {
+  const el = document.getElementById('vpLastFetchedLabel');
+  if (!el) return;
+  if (!vpLastFetchedAt) { el.textContent = ''; return; }
+  const secAgo = Math.max(0, Math.round((Date.now() - vpLastFetchedAt) / 1000));
+  el.textContent = secAgo < 2 ? 'updated just now' : `updated ${secAgo}s ago`;
+}
+setInterval(fetchVolumeProfile, VP_AUTO_REFRESH_MS);
+setInterval(updateVpLastFetchedLabel, 1000);
 
 function resizeVolumeProfileCanvas() {
   const AXIS_W = 58;
