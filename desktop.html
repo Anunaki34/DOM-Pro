@@ -2638,20 +2638,29 @@ function renderCVD() {
 
   if (!bars.length) return;
 
-  // v87: one shared scale for every bar, live bar included. Previously the
-  // live (forming) bar was supposed to use a separate, more sensitive
-  // "liveMax" scale so its growth was visible sooner — but that scale was
-  // computed and then never actually applied (norm always divided by the
-  // closed-bar maxDelta), so the forming bar barely moved until it closed
-  // and the next render picked it up as a "closed" bar with fresh history.
-  // Folding the live bar's current delta into the same pool it's measured
-  // against means its bar grows in real time, on every 250ms render tick,
-  // against the same scale the reference axis shows — no reload needed.
-  const _deltas = bars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
-  // 95th-pct so one historical spike doesn't flatten every other bar
-  const maxDelta = _deltas.length
+  // v89: the v87 fix still didn't grow visibly, and here's why — that fix
+  // computed maxDelta as the 95th-percentile of ALL bars *including the
+  // live one*. During any reasonably active period the live bar quickly
+  // becomes one of the top few deltas in the 48-bar window, at which point
+  // it starts setting its own ceiling: as its delta grows, maxDelta grows
+  // right along with it, so the normalized height barely moves — a
+  // self-referencing scale. Candles don't have this problem because
+  // they're plotted directly (no normalization against a shared scale).
+  //
+  // Fix: the scale comes from CLOSED bars only, so it stays fixed for the
+  // entire lifetime of the forming bar — a stable ruler the live bar
+  // visibly climbs against, frame to frame. If the live bar genuinely
+  // grows past that historical scale, the scale expands to fit it for
+  // this frame (auto-scale) instead of clamping it flat at the ceiling.
+  const _liveStart = currentCandle ? currentCandle.startTime : -1;
+  const closedBars = bars.filter(c => c.startTime !== _liveStart);
+  const _deltas = closedBars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
+  // 95th-pct of closed bars so one historical spike doesn't flatten the rest
+  const closedMaxDelta = _deltas.length
     ? Math.max(1, _deltas[Math.floor(_deltas.length * 0.95)] || _deltas[_deltas.length - 1])
     : 1;
+  const liveDelta = currentCandle ? Math.abs(currentCandle.buyVol - currentCandle.sellVol) : 0;
+  const maxDelta = Math.max(closedMaxDelta, liveDelta * 1.05);
 
   // ── Reference axis: same scale the bars use, so the forming bar's
   // growth can be read directly against a fixed ruler instead of judged
