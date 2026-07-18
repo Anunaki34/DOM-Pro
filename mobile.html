@@ -2,16 +2,14 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>BTCUSDT DOM Pro v78</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<title>BTCUSDT DOM Pro v79 — Mobile</title>
 <style>
 /* ── ALL STYLES FROM v52 + v53 additions ── */
 body { font-family:Arial; background:#0e1117; color:#e6edf3; font-size:11px; }
 #bookmapCanvas {
-  width: 100%;
-  display: block;
-  touch-action: none;
-}
+  width: 800px;
   height: 500px;
   background: #0a0e14;
   border: 1px solid #2a3a4a;
@@ -114,6 +112,11 @@ button,input { margin:3px; width:60px; font-size:10px; }
 #cvdHistogram { width:100%; height:220px; background:#12171f; overflow-x:auto; overflow-y:hidden; border:1px solid #2a3a4a; position:relative; cursor:crosshair; margin-top:10px; }
 #cvdCanvas { display:block; height:220px; }
 #cvdTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
+/* Volume Profile — mirrors the candlestick canvas-row / price-axis layout */
+#volumeProfileCanvasRow { display:flex; flex-direction:row; position:relative; width:100%; flex-shrink:0; }
+#volumeProfileCanvas { flex:1; min-width:0; height:220px; background:#0a0e14; cursor:crosshair; display:block; }
+#volumeProfilePriceAxisCanvas { width:58px; height:220px; flex-shrink:0; background:#0d111a; border-left:1px solid #2a3a4a; cursor:ns-resize; display:block; }
+#volumeProfileTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
 #signalBadge.ms-accumulation { background:rgba(0,200,255,0.15); color:#00ccff; border-color:#00ccff; }
 #signalBadge.ms-distribution { background:rgba(255,100,220,0.15); color:#ff64dc; border-color:#ff64dc; }
 #signalBadge.ms-bull-aggression { background:rgba(0,255,136,0.18); color:#00ff88; border-color:#00ff88; }
@@ -149,49 +152,8 @@ button,input { margin:3px; width:60px; font-size:10px; }
 .panel-collapsible { overflow:hidden; transition:max-height 0.25s ease, opacity 0.2s ease; }
 .panel-collapsible.collapsed { max-height:0 !important; opacity:0; pointer-events:none; }
 
-/* .container handled by v78 fluid layout above */
-/* v78: fluid single-column layout */
-.container {
-  display: block;
-  width: 100%;
-  box-sizing: border-box;
-  padding: 0;
-  margin-top: 4px;
-}
-#bookmapBlock {
-  width: 100%;
-  box-sizing: border-box;
-}
-#candlestickWrap {
-  width: 100% !important;
-  box-sizing: border-box;
-}
-#candlestickCanvasRow {
-  width: 100%;
-  box-sizing: border-box;
-  display: flex;
-  flex-direction: row;
-  position: relative;
-}
-#candlestickCanvas {
-  flex: 1;
-  min-width: 0;
-  height: 400px;
-  background: #0a0e14;
-  cursor: crosshair;
-  display: block;
-}
-#cvdWrap {
-  width: 100%;
-  box-sizing: border-box;
-  margin-top: 4px;
-}
-/* Bookmap resizable height on desktop */
-#bookmapBlock-body {
-  overflow: hidden;
-  resize: vertical;
-  min-height: 200px;
-}
+.container { display:flex; flex-wrap:nowrap; justify-content:flex-start; gap:10px; margin-top:10px; padding:0 0 0 10px; box-sizing:border-box; width:100%; }
+#bookmapCanvas { flex-shrink:0; }
 #candlestickWrap {
   flex:1; min-width:0; display:flex; flex-direction:column; border-left:1px solid #2a3a4a; background:#0d1117;
   font-family:monospace; font-size:9px; overflow:hidden;
@@ -604,21 +566,81 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   margin-left: auto; color: #2a5a7a; font-size: 8px;
 }
 
-/* ── Aggression Bar ─────────────────────────────────────────── */
+/* ── Aggression Bar ──────────────────────────────────────────── */
 #aggrBarSection { margin:6px 0 2px 0; }
 #aggrBarTitle   { font-size:9px; color:#556; letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
 #aggrBarWrap    { width:340px; height:8px; background:#1a2233; border-radius:4px; overflow:hidden; display:flex; margin:0 auto 2px auto; }
-#aggrBuyBar     { height:100%; background:linear-gradient(90deg,#005522,#00cc66); transition:width 0.3s ease; }
-#aggrSellBar    { height:100%; background:linear-gradient(90deg,#cc2200,#661100); transition:width 0.3s ease; }
+#aggrBuyBar  { height:100%; }
+#aggrSellBar { height:100%; }
 #aggrLabels     { display:flex; justify-content:space-between; width:340px; margin:0 auto; font-size:9px; font-family:monospace; }
 #aggrBuyLabel   { color:#00cc66; }
 #aggrSellLabel  { color:#cc4422; text-align:right; }
 #aggrMomentum   { text-align:center; font-size:9px; font-family:monospace; color:#7a8a9a; margin-top:2px; }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   MOBILE OPTIMIZATION OVERRIDES (v79-mobile)
+   Same selectors as above, placed last so they win the cascade. Nothing
+   here removes a feature — it only makes fixed desktop pixel-widths fluid
+   and lets panels stack full-width instead of sitting side by side.
+   Panel re-ordering itself happens once in JS, near the top of <body>.
+   ═══════════════════════════════════════════════════════════════════════ */
+html, body { max-width:100vw; overflow-x:hidden; }
+body { font-size:12px; -webkit-text-size-adjust:100%; }
+* { box-sizing:border-box; }
+
+/* Bookmap: was a fixed 800×500 canvas — now fluid width, JS keeps the
+   internal resolution (canvas.width attribute) matched to the rendered
+   CSS width every frame, same pattern the candlestick chart already uses. */
+#bookmapCanvas { width:100%; height:380px; max-width:100%; }
+
+/* Candlestick / footprint chart row already flexes via #candlestickCanvasRow;
+   just make sure the wrapping block itself is fluid now that it's no
+   longer squeezed next to the bookmap. */
+#candlestickBlock { width:100%; }
+#candlestickCanvas { height:340px; }
+#priceAxisCanvas   { height:340px; }
+
+/* Volume profile / CVD already size from their own container's clientWidth,
+   nothing to override there.                                             */
+
+/* Progress / aggression bars: were fixed 320–340px for a wide desktop
+   panel — cap instead of forcing a width wider than the phone itself.   */
+#obBarWrap, #aggrBarWrap, #aggrLabels, #scoreBarWrap {
+  width:100%; max-width:340px;
+}
+
+/* OB Pressure / Signal Snapshot / Whale Table were side-by-side desktop
+   columns (fixed 280px / 230px) — now standalone stacked panels.        */
+#taCompactCol, #whaleTableCol { width:100%; border-left:none; border-right:none; }
+#taCompactCol { border-top:1px solid #1a2a3a; }
+#whaleTableCol { border-top:1px solid #1e3050; }
+#whaleTableWrap { overflow-x:auto; }
+table#whaleTable { min-width:0; }
+
+/* Controls panel: let each control group wrap onto its own line and give
+   inputs/buttons/checkboxes a touch-friendly minimum tap target.        */
+.controls-wrap { justify-content:flex-start; }
+.ctrl-group { width:100%; justify-content:flex-start; }
+input[type="number"], input[type="text"], input[type="datetime-local"],
+select, button {
+  min-height:24px; font-size:12px;
+}
+input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
+.panel-toggle-bar { min-height:30px; padding-top:6px; padding-bottom:6px; }
+
+/* Candidate-pair / structure-note rows can be text-heavy; keep them from
+   forcing the whole page to scroll horizontally.                        */
+#taCandidateList, #taPairRows, #taConditionGrid, #taHistoryWrap { max-width:100%; overflow-x:auto; }
+
+/* Signal Snapshot's "Full TA ↓" jump button and other small controls
+   still work via scrollIntoView — just make sure nothing here overflows. */
+#taCompactCol .cc-head { flex-wrap:wrap; }
 </style>
 </head>
 <body>
 
-<h3 style="text-align:center">DOM Pro <span style="font-size:10px;color:#556;font-weight:normal;">v78</span></h3>
+
+<h3 style="text-align:center">DOM Pro <span style="font-size:10px;color:#556;font-weight:normal;">v79</span></h3>
 
 <div id="connectionAlert" style="display:none;text-align:center;padding:6px;margin:5px;background:#ffcc00;color:#000;font-weight:bold;border-radius:4px;"></div>
 
@@ -709,7 +731,98 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
 
 <!-- v60: Quick-glance row: OBP left, compact TA signals right -->
 <div id="taQuickWrap">
+  <div id="obPressureWrap">
+    <div class="panel-toggle-bar" onclick="togglePanel('obPressureWrap')">
+      <span>&#9670; Order Book Pressure</span><span class="ptb-arrow">&#9660;</span>
+    </div>
+    <div class="panel-collapsible" id="obPressureWrap-body" style="max-height:300px;">
+      <div id="obPressurePanel">
+        <div class="ob-title">Order Book Pressure &nbsp;|&nbsp;<span id="obRangeLabel" style="font-size:9px;color:#7a8a9a;">Range: <span id="obRangeDisplay">500</span> &#177;</span></div>
+        <div class="ob-row">
+          <span id="obBidLabel" style="color:#00ff88;">BID</span>
+          <span id="obBidSize"  style="color:#00ff88;">&mdash;</span>
+          <span id="obMidPrice">&mdash;</span>
+          <span id="obAskSize"  style="color:#ff4d4d;">&mdash;</span>
+          <span id="obAskLabel" style="color:#ff4d4d;">ASK</span>
+        </div>
+        <div id="obBarWrap"><div id="obBidBar" style="width:50%;"></div><div id="obAskBar" style="width:50%;"></div></div>
 
+        <!-- Buyer / Seller Aggression Bar -->
+        <div id="aggrBarSection">
+          <div id="aggrBarTitle">Trade Aggression (3s real-time)</div>
+          <div id="aggrBarWrap">
+            <div id="aggrBuyBar"  style="width:50%;background:linear-gradient(90deg,#005522,#00cc66);"></div>
+            <div id="aggrSellBar" style="width:50%;background:linear-gradient(90deg,#cc2200,#661100);"></div>
+          </div>
+          <div id="aggrLabels">
+            <span id="aggrBuyLabel">BUY 50%</span>
+            <span id="aggrSellLabel">50% SELL</span>
+          </div>
+          <div id="aggrMomentum">— waiting for trades —</div>
+        </div>
+        <div id="obRangeLine">Scanning &mdash;</div>
+        <div id="obWhaleAlert" style="color:#888;"></div>
+        <div id="obNarrative"></div>
+      </div>
+    </div>
+  </div>
+  <!-- Compact TA signal column -->
+  <div id="taCompactCol">
+    <div class="cc-head">
+      <span>&#9670; Signal Snapshot</span>
+      <button onclick="document.getElementById('signalPanelWrap').scrollIntoView({behavior:'smooth',block:'start'})">&#9881; Full TA &#8595;</button>
+    </div>
+    <div id="taPhase" class="neutral">&#8212; DETECTING PHASE &#8212;</div>
+    <div id="taAlertStrip">&#9888; &#8212;</div>
+    <div id="taSetupBadge" class="none">&#8212; SCANNING &#8212;</div>
+    <div id="taStrengthRow">
+      <span class="sr-label">Z</span>
+      <span id="taCompositeZ" class="sr-val">&#8212;</span>
+      <span class="sr-label" style="margin-left:4px;">Buf</span>
+      <span id="taConfirmBuffer" class="sr-val">&#xB7;&#xB7;&#xB7;&#xB7;&#xB7;</span>
+      <span class="sr-label" style="margin-left:4px;">Narr</span>
+      <div id="taNarrativeBarInline" style="flex:1;min-width:40px;height:5px;background:#0d1420;border-radius:3px;overflow:hidden;position:relative;">
+        <div id="taNarrativeFillInline"></div>
+        <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:#1e3050;"></div>
+      </div>
+      <span id="taNarrativeVal" class="sr-val" style="min-width:32px;text-align:right;">&#8212;</span>
+    </div>
+    <div id="taRegime" class="ranging" style="display:none;">RANGING</div>
+    <div style="display:flex;align-items:center;gap:6px;padding:2px 8px;border-top:1px solid #1a2a3a;">
+      <span style="font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px;">Price</span>
+      <span id="taLivePrice" style="font-size:11px;color:#7a9ab0;font-family:monospace;">&#8212;</span>
+      <span id="taStatusDot" style="width:6px;height:6px;border-radius:50%;background:#334;display:inline-block;margin-left:auto;"></span>
+      <span id="taLastUpdate" style="font-size:7px;color:#334;">&#8212;</span>
+    </div>
+  </div>
+  <!-- v68: Whale Orders Table — third column -->
+  <div id="whaleTableCol">
+    <div class="wt-head" id="whaleTableToggleBtn" title="Toggle whale orders table">
+      <span class="wt-title">&#9651; Whale Orders</span>
+      <span class="wt-meta">
+        <span id="whaleTableMinLabel">min: <span id="whaleTableMinVal">3</span></span>
+        <span id="whaleTableCountLabel"></span>
+      </span>
+      <span class="wt-arrow" id="whaleTableArrow">&#9660;</span>
+    </div>
+    <div id="whaleTableWrap">
+      <table id="whaleTable">
+        <thead>
+          <tr>
+            <th>Side</th>
+            <th>Price</th>
+            <th>Size</th>
+            <th>Dist</th>
+          </tr>
+        </thead>
+        <tbody id="whaleTableBody">
+          <tr><td colspan="4" class="wt-empty">WAITING FOR BOOK&hellip;</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+</div>
 <div id="signalPanelWrap">
   <div class="panel-toggle-bar" onclick="togglePanel('signalPanelWrap')">
     <span>&#9670; Trading Assistant &#8212; Full Detail</span><span class="ptb-arrow">&#9660;</span>
@@ -784,114 +897,19 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   </div>
 </div>
 
-<!-- v78: Stacked full-width layout — works on desktop and mobile -->
-<div class="container">
-  <!-- Row 1: Bookmap — full width -->
-  <div id="bookmapBlock" style="display:flex;flex-direction:column;gap:0;">
+<!-- Main row: Bookmap + Candlestick -->
+<div class="container" style="padding-right:0;">
+  <div id="bookmapBlock" style="display:flex;flex-direction:column;gap:0;flex-shrink:0;">
     <div class="panel-toggle-bar" onclick="togglePanel('bookmapBlock')">
       <span>&#9670; Bookmap</span><span class="ptb-arrow">&#9660;</span>
     </div>
     <div class="panel-collapsible" id="bookmapBlock-body" style="max-height:520px;">
-      <canvas id="bookmapCanvas" height="400"></canvas>
+      <canvas id="bookmapCanvas" width="800" height="500"></canvas>
       <div style="font-size:9px;color:#3a5a7a;text-align:center;font-family:monospace;letter-spacing:0.5px;padding:2px 0;">
         &#x2195; Drag Y = Depth &nbsp;|&nbsp; &#x2194; Drag X = Time window
       </div>
     </div>
   </div>
-
-  <!-- Row 2: Footprint / Candles — full width -->
-  <div id="obPressureWrap">
-    <div class="panel-toggle-bar" onclick="togglePanel('obPressureWrap')">
-      <span>&#9670; Order Book Pressure</span><span class="ptb-arrow">&#9660;</span>
-    </div>
-    <div class="panel-collapsible" id="obPressureWrap-body" style="max-height:300px;">
-      <div id="obPressurePanel">
-        <div class="ob-title">Order Book Pressure &nbsp;|&nbsp;<span id="obRangeLabel" style="font-size:9px;color:#7a8a9a;">Range: <span id="obRangeDisplay">500</span> &#177;</span></div>
-        <div class="ob-row">
-          <span id="obBidLabel" style="color:#00ff88;">BID</span>
-          <span id="obBidSize"  style="color:#00ff88;">&mdash;</span>
-          <span id="obMidPrice">&mdash;</span>
-          <span id="obAskSize"  style="color:#ff4d4d;">&mdash;</span>
-          <span id="obAskLabel" style="color:#ff4d4d;">ASK</span>
-        </div>
-        <div id="obBarWrap"><div id="obBidBar" style="width:50%;"></div><div id="obAskBar" style="width:50%;"></div></div>
-
-        <!-- Buyer / Seller Aggression Bar -->
-        <div id="aggrBarSection">
-          <div id="aggrBarTitle">Trade Aggression (60s)</div>
-          <div id="aggrBarWrap">
-            <div id="aggrBuyBar"  style="width:50%;"></div>
-            <div id="aggrSellBar" style="width:50%;"></div>
-          </div>
-          <div id="aggrLabels">
-            <span id="aggrBuyLabel">BUY 50%</span>
-            <span id="aggrSellLabel">50% SELL</span>
-          </div>
-          <div id="aggrMomentum">— momentum —</div>
-        </div>
-        <div id="obRangeLine">Scanning &mdash;</div>
-        <div id="obWhaleAlert" style="color:#888;"></div>
-        <div id="obNarrative"></div>
-      </div>
-    </div>
-  </div>
-  <!-- Compact TA signal column -->
-  <div id="taCompactCol">
-    <div class="cc-head">
-      <span>&#9670; Signal Snapshot</span>
-      <button onclick="document.getElementById('signalPanelWrap').scrollIntoView({behavior:'smooth',block:'start'})">&#9881; Full TA &#8595;</button>
-    </div>
-    <div id="taPhase" class="neutral">&#8212; DETECTING PHASE &#8212;</div>
-    <div id="taAlertStrip">&#9888; &#8212;</div>
-    <div id="taSetupBadge" class="none">&#8212; SCANNING &#8212;</div>
-    <div id="taStrengthRow">
-      <span class="sr-label">Z</span>
-      <span id="taCompositeZ" class="sr-val">&#8212;</span>
-      <span class="sr-label" style="margin-left:4px;">Buf</span>
-      <span id="taConfirmBuffer" class="sr-val">&#xB7;&#xB7;&#xB7;&#xB7;&#xB7;</span>
-      <span class="sr-label" style="margin-left:4px;">Narr</span>
-      <div id="taNarrativeBarInline" style="flex:1;min-width:40px;height:5px;background:#0d1420;border-radius:3px;overflow:hidden;position:relative;">
-        <div id="taNarrativeFillInline"></div>
-        <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:#1e3050;"></div>
-      </div>
-      <span id="taNarrativeVal" class="sr-val" style="min-width:32px;text-align:right;">&#8212;</span>
-    </div>
-    <div id="taRegime" class="ranging" style="display:none;">RANGING</div>
-    <div style="display:flex;align-items:center;gap:6px;padding:2px 8px;border-top:1px solid #1a2a3a;">
-      <span style="font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px;">Price</span>
-      <span id="taLivePrice" style="font-size:11px;color:#7a9ab0;font-family:monospace;">&#8212;</span>
-      <span id="taStatusDot" style="width:6px;height:6px;border-radius:50%;background:#334;display:inline-block;margin-left:auto;"></span>
-      <span id="taLastUpdate" style="font-size:7px;color:#334;">&#8212;</span>
-    </div>
-  </div>
-  <!-- v68: Whale Orders Table — third column -->
-  <div id="whaleTableCol">
-    <div class="wt-head" id="whaleTableToggleBtn" title="Toggle whale orders table">
-      <span class="wt-title">&#9651; Whale Orders</span>
-      <span class="wt-meta">
-        <span id="whaleTableMinLabel">min: <span id="whaleTableMinVal">3</span></span>
-        <span id="whaleTableCountLabel"></span>
-      </span>
-      <span class="wt-arrow" id="whaleTableArrow">&#9660;</span>
-    </div>
-    <div id="whaleTableWrap">
-      <table id="whaleTable">
-        <thead>
-          <tr>
-            <th>Side</th>
-            <th>Price</th>
-            <th>Size</th>
-            <th>Dist</th>
-          </tr>
-        </thead>
-        <tbody id="whaleTableBody">
-          <tr><td colspan="4" class="wt-empty">WAITING FOR BOOK&hellip;</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-  </div>
-</div>
 
   <div id="candlestickWrap">
     <div id="candlestickBlock" style="display:flex;flex-direction:column;">
@@ -920,9 +938,9 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
         <div id="trFetchProgress"><div id="trFetchProgressBar"></div></div>
         <div id="trFetchStatus"></div>
         <div id="candlestickCanvasRow">
-          <canvas id="candlestickCanvas" height="400"></canvas>
+          <canvas id="candlestickCanvas" width="260" height="400"></canvas>
           <canvas id="priceAxisCanvas" width="58" height="400"></canvas>
-          <canvas id="candleCrosshair" height="400" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
+          <canvas id="candleCrosshair" width="320" height="400" style="position:absolute;top:0;left:0;pointer-events:none;"></canvas>
           <div id="priceAxisDragHint">⟺ drag axis</div>
         </div>
         <div id="candleTotalDelta">Total Δ: —</div>
@@ -965,9 +983,86 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   </div>
 </div>
 
+<!-- Full-width Volume Profile panel with hide toggle -->
+<div id="volumeProfileWrap">
+  <div class="panel-toggle-bar" style="cursor:pointer;" onclick="togglePanel('volumeProfileWrap')">
+    <span>&#11035; Volume Profile</span>
+    <span style="display:flex; align-items:center; gap:8px;">
+      <label style="cursor:pointer; display:flex; align-items:center; gap:3px; font-size:9px; color:#8aaabb; font-family:monospace;" onclick="event.stopPropagation()">
+        <input type="checkbox" id="vpShowProfileToggle" checked style="cursor:pointer;"> Show Profile
+      </label>
+      <button id="vpRefreshBtn" onclick="event.stopPropagation(); fetchVolumeProfile();" style="font-size:9px;font-family:monospace;background:#1a2233;color:#8aaabb;border:1px solid #2a3a4a;border-radius:3px;padding:2px 6px;cursor:pointer;">&#8635; Refresh</button>
+      <span class="ptb-arrow">&#9660;</span>
+    </span>
+  </div>
+  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:260px;">
+    <div id="volumeProfileCanvasRow">
+      <canvas id="volumeProfileCanvas"></canvas>
+      <canvas id="volumeProfilePriceAxisCanvas" width="58" height="220"></canvas>
+    </div>
+    <div style="font-size:9px;color:#3a5a7a;text-align:center;font-family:monospace;letter-spacing:0.5px;padding:2px 0;">
+      &#x2195; Drag price axis = Zoom
+    </div>
+    <div id="volumeProfileTooltip"></div>
+  </div>
+</div>
+
 <div id="dragHint"></div>
 <div id="bmTooltip"></div>
 <div id="candleHoverTooltip"></div>
+
+<script>
+"use strict";
+// ══════════════════════════════════════════════════════════════════════
+// MOBILE LAYOUT: re-order panels top-to-bottom, before the main dashboard
+// script runs. This only moves existing DOM nodes (no cloning, nothing is
+// removed or recreated), so every id, event listener, and canvas below
+// keeps working exactly as it does on desktop — only the vertical order
+// changes. Requested order:
+//   controls > delta/dominance > bookmap > order book pressure >
+//   candles/footprint > cvd histogram > volume profile > (everything else)
+// ══════════════════════════════════════════════════════════════════════
+(function () {
+  var topOrder = [
+    'controlsPanel',
+    'deltaPanel',
+    'bookmapBlock',
+    'obPressureWrap',
+    'candlestickBlock',
+    'cvdWrap',
+    'volumeProfileWrap'
+  ];
+  // Every other panel not named above — kept in their original relative
+  // order, placed at the very bottom.
+  var bottomOrder = [
+    'taCompactCol',
+    'whaleTableCol',
+    'candleLogBlock',
+    'signalPanelWrap'
+  ];
+
+  var anchor = document.getElementById('dragHint'); // overlay elements stay last
+  var parent = anchor ? anchor.parentNode : document.body;
+  if (!parent) return;
+
+  topOrder.concat(bottomOrder).forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) parent.insertBefore(el, anchor);
+  });
+
+  // The old desktop wrapper shells (#taQuickWrap, #candlestickWrap held the
+  // panels above before they were unwrapped; .container held bookmap +
+  // candlestick side-by-side) are now empty — remove the empty shells so
+  // they don't leave stray borders/gaps behind.
+  ['taQuickWrap', 'candlestickWrap'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el && el.children.length === 0) el.remove();
+  });
+  document.querySelectorAll('.container').forEach(function (el) {
+    if (el.children.length === 0) el.remove();
+  });
+})();
+</script>
 
 <script>
 "use strict";
@@ -1052,6 +1147,33 @@ const candleCrosshairCanvas = document.getElementById("candleCrosshair"), crossh
 const candleTotalDelta = document.getElementById("candleTotalDelta"), candleIntervalInput = document.getElementById("candleInterval");
 const candleVisibleCountInput = document.getElementById("candleVisibleCount"), candleHoverTooltip = document.getElementById("candleHoverTooltip");
 let cvdShowMarkers = false;
+
+// ── Volume Profile ──────────────────────────────────────────────────────
+const volumeProfileWrap      = document.getElementById("volumeProfileWrap");
+const volumeProfileCanvas    = document.getElementById("volumeProfileCanvas");
+const volumeProfileCtx       = volumeProfileCanvas.getContext("2d");
+const vpPriceAxisCanvas      = document.getElementById("volumeProfilePriceAxisCanvas");
+const vpPriceAxisCtx         = vpPriceAxisCanvas.getContext("2d");
+const volumeProfileTooltip   = document.getElementById("volumeProfileTooltip");
+const vpShowProfileToggle    = document.getElementById("vpShowProfileToggle");
+let volumeProfileData = [];   // [{price, buy_vol, sell_vol}, ...] sorted desc by price
+let vpShowProfile = true;
+// v80: drag-to-zoom on the volume-profile price axis, same convention as
+// the candlestick chart's priceAxisZoom (drag down = zoom out, up = zoom in)
+// v84: drag-to-zoom on the volume-profile price axis, same "windowed
+// price range" convention as the bookmap's depth-drag (exponential scale
+// factor per pixel of vertical drag). vpPriceRange is the visible
+// half-span in price units; 0 means "not yet initialised — show full 24h
+// range on first render".
+let vpPriceRange = 0, vpZoomDragging = false, vpZoomDragStartY = 0, vpZoomDragStartRange = 0;
+let vpMinPrice = 0, vpMaxPrice = 0; // current rendered range, used for hover/tooltip
+// v85: zoom can be anchored anywhere in the VP area, not just the axis —
+// vpCenterPrice holds the price the view is currently centred on (null =
+// dataset midpoint, the default before the user has dragged anything).
+// vpRender* cache the last render's price<->y mapping so a mousedown
+// anywhere in the panel can be converted straight to a price to zoom on.
+let vpCenterPrice = null;
+let vpRenderHigh = 0, vpRenderPadTop = 14, vpRenderYScale = 1;
 
 // v53: store candle rendering range for accurate hover tooltip
 let candleMinPrice = 0, candleMaxPrice = 0;
@@ -1210,6 +1332,8 @@ function updateCandleWithTrade(price, qty, isSell) {
       lastClosedBoundary = currentCandle.startTime;
     }
     currentCandle = { startTime: boundary, open: price, high: price, low: price, close: price, volume:0, buyVol:0, sellVol:0, trades:[] };
+// Force a fresh CVD render with the new closed candle
+    renderCVD();
   }
   const p = parseFloat(price), qf = parseFloat(qty);
   // Set open from first real trade if sentinel 0 is still set
@@ -1220,34 +1344,25 @@ function updateCandleWithTrade(price, qty, isSell) {
   currentCandle.trades.push({ price: p, size: qf, isSell });
 }
 function logCandleToPeriodLog_UNUSED(candle) { /* replaced by persist-patched version */ }
-// ── v78: fluid canvas resize ──────────────────────────────────────────────
-// Both bookmap and FP canvases fill 100% of viewport width.
-// Called on load, window resize, and panel toggle.
-
-function resizeBookmapCanvas() {
-  const w = Math.max(320, window.innerWidth);
-  const block = document.getElementById('bookmapBlock-body');
-  // Preserve logical height — use current canvas height or default 400
-  const h = bookmapCanvas.height > 0 ? bookmapCanvas.height : 400;
-  if (bookmapCanvas.width !== w) {
-    bookmapCanvas.width  = w;
-    bookmapCanvas.height = h;
-  }
-}
-
 function resizeCandlestickCanvas() {
   const PRICE_AXIS_W = 58;
-  const w = Math.max(200, window.innerWidth - PRICE_AXIS_W);
+  const CHART_H = 340; // shorter than desktop's 400px to conserve mobile vertical space
+  // v-mobile: candlestick chart is now its own full-width stacked panel
+  // (no longer squeezed beside the bookmap), so size it from its own
+  // panel body rather than "whatever's left of the window after the
+  // bookmap" like the desktop layout does.
+  const bodyEl = document.getElementById('candlestickBlock-body');
+  const containerW = (bodyEl && bodyEl.clientWidth) ? bodyEl.clientWidth : window.innerWidth;
+  const availW = containerW - PRICE_AXIS_W, w = Math.max(180, availW);
   if (candlestickCanvas.width !== Math.round(w)) candlestickCanvas.width = Math.round(w);
-  candlestickCanvas.height = 400;
-  priceAxisCanvas.width  = PRICE_AXIS_W;
-  priceAxisCanvas.height = 400;
+  candlestickCanvas.height = CHART_H;
+  priceAxisCanvas.width = PRICE_AXIS_W;
+  priceAxisCanvas.height = CHART_H;
+  // Crosshair overlay covers both
   const totalW = Math.round(w) + PRICE_AXIS_W;
-  candleCrosshairCanvas.width  = totalW;
-  candleCrosshairCanvas.height = 400;
+  candleCrosshairCanvas.width = totalW;
+  candleCrosshairCanvas.height = CHART_H;
   candleCrosshairCanvas.style.width = totalW + 'px';
-  const wrap = document.getElementById('candlestickWrap');
-  if (wrap) wrap.style.width = '100%';
 }
 function renderCandles() {
   resizeCandlestickCanvas(); const w = candlestickCanvas.width, h = candlestickCanvas.height, ctx = candleCtx; ctx.clearRect(0,0,w,h);
@@ -1715,17 +1830,15 @@ function renderCandles() {
     ctx.beginPath(); ctx.moveTo(boxX + boxW, yClose); ctx.lineTo(boxX + boxW - tickLen, yClose); ctx.stroke();
 
     // ── Time label ───────────────────────────────────────────────────────
-    const d = new Date(candle.startTime);
-    const localHours = (d.getUTCHours() + 8) % 24;
-    const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes().toString().padStart(2,'0');
+const d = new Date(candle.startTime);
+const localHours = (d.getUTCHours() + 8) % 24;  // UTC+8 for Manila
+const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes().toString().padStart(2,'0');
     const timeLabelY = Math.min(h - 14, yLow + 9);
     ctx.fillStyle = fpLightMode ? 'rgba(80,70,50,0.80)' : 'rgba(80,105,130,0.85)';
     ctx.font = '7px monospace'; ctx.textAlign = 'center';
     ctx.fillText(timeLabel, boxX + boxW / 2, timeLabelY);
 
     // ── Delta pill badge — derived from rows so it matches the visible box ──
-    // Using candle.buyVol - candle.sellVol diverges when clusterTick > tickSize
-    // because clustering merges levels. Summing rows guarantees consistency.
     const rowsBuyTotal  = rows.reduce((s, r) => s + r.buy,  0);
     const rowsSellTotal = rows.reduce((s, r) => s + r.sell, 0);
     const candleDelta = rows.length ? (rowsBuyTotal - rowsSellTotal) : (candle.buyVol - candle.sellVol);
@@ -1734,23 +1847,21 @@ function renderCandles() {
     const deltaStr    = (candleDelta >= 0 ? '+' : '') + candleDelta.toFixed(1);
     const pillBull    = candleDelta >= 0;
 
-    // ── Delta flip detection (most recent candle only) ────────────────────
+    // ── Delta flip detection (most recent live candle only) ───────────────
     const isLiveCandle = !_trActive && idx === displayCandles.length - 1
                          && currentCandle && candle.startTime === currentCandle.startTime;
     if (isLiveCandle) {
       const sign = candleDelta >= 0 ? 1 : -1;
-      if (_prevDeltaSign !== 0 && sign !== _prevDeltaSign) {
-        _deltaFlipTime = Date.now();
-      }
+      if (_prevDeltaSign !== 0 && sign !== _prevDeltaSign) _deltaFlipTime = Date.now();
       _prevDeltaSign = sign;
     }
 
-    // ── Compute glow intensity (0→1→0 over DELTA_GLOW_MS) ────────────────
-    const now         = Date.now();
-    const elapsed     = now - _deltaFlipTime;
-    const glowing     = isLiveCandle && elapsed < DELTA_GLOW_MS;
-    const glowT       = glowing ? Math.max(0, 1 - elapsed / DELTA_GLOW_MS) : 0;
-    const glowAlpha   = glowing ? Math.min(1, glowT * 1.4) : 0;
+    // ── Glow intensity — linear decay over DELTA_GLOW_MS ─────────────────
+    const now       = Date.now();
+    const elapsed   = now - _deltaFlipTime;
+    const glowing   = isLiveCandle && elapsed < DELTA_GLOW_MS;
+    const glowT     = glowing ? Math.max(0, 1 - elapsed / DELTA_GLOW_MS) : 0;
+    const glowAlpha = glowing ? Math.min(1, glowT * 1.4) : 0;
 
     ctx.font = 'bold 7px monospace';
     const dtw = ctx.measureText(deltaStr).width;
@@ -1758,15 +1869,14 @@ function renderCandles() {
     const pillX = boxX + boxW / 2 - pillW / 2;
     const pillY = deltaY - pillH + 1;
 
-    // Glow halo — drawn behind the pill as a blurred larger rect
+    // Glow halo behind pill
     if (glowAlpha > 0.02) {
-      const glowColor = pillBull
-        ? `rgba(0,255,120,${(glowAlpha * 0.7).toFixed(3)})`
-        : `rgba(255,60,60,${(glowAlpha * 0.7).toFixed(3)})`;
       ctx.save();
       ctx.shadowColor = pillBull ? '#00ff88' : '#ff3c3c';
       ctx.shadowBlur  = 12 * glowAlpha;
-      ctx.fillStyle   = glowColor;
+      ctx.fillStyle   = pillBull
+        ? `rgba(0,255,120,${(glowAlpha * 0.7).toFixed(3)})`
+        : `rgba(255,60,60,${(glowAlpha * 0.7).toFixed(3)})`;
       ctx.beginPath();
       ctx.roundRect ? ctx.roundRect(pillX - 2, pillY - 2, pillW + 4, pillH + 4, 4)
                     : ctx.rect(pillX - 2, pillY - 2, pillW + 4, pillH + 4);
@@ -2244,8 +2354,18 @@ function addTrade(price, qty, isSell) {
   else { const d = icebergTracker.get(key); d.count++; d.volume += qf; }
 }
 
+// v-mobile: bookmap canvas used to be a fixed 800×500 desktop element —
+// now fluid width, matching the resolution to the panel's own rendered
+// CSS width every frame (same pattern as resizeCandlestickCanvas).
+function resizeBookmapCanvas() {
+  const w = Math.max(240, Math.round(bookmapCanvas.clientWidth || window.innerWidth));
+  if (bookmapCanvas.width !== w) bookmapCanvas.width = w;
+  bookmapCanvas.height = 380;
+}
+
 // ── BOOKMAP RENDERER (unchanged) ──────────────────────────────────────────
 function renderBookmap() {
+  resizeBookmapCanvas();
   const ctx=bookmapCtx, w=bookmapCanvas.width, h=bookmapCanvas.height; ctx.clearRect(0,0,w,h); ctx.shadowColor='transparent';
   if(!priceCenter||bmColumns.length===0){ ctx.fillStyle="#aaa"; ctx.font="14px Arial"; ctx.textAlign="center"; ctx.fillText("Waiting for data...",w/2,h/2); return; }
   const now=Date.now(), timeWindowMs=bmTimeWindowSec*1000, rightPaddingRatio=0.25, viewEndTime=now+timeWindowMs*rightPaddingRatio, cutoffTime=viewEndTime-timeWindowMs;
@@ -2336,6 +2456,9 @@ function renderBookmap() {
   }
   const cpLabelY=Math.max(14,Math.min(h-4,curY)); ctx.fillStyle="#000"; ctx.fillRect(plotW+1,cpLabelY-10,AXIS_W-2,14); ctx.fillStyle="#ffff00"; ctx.font="bold 10px monospace"; ctx.textAlign="left"; ctx.fillText(priceCenter.toFixed(tickDecimals),plotW+4,cpLabelY+2);
   // ── Time axis: candle-boundary aligned dashed markers ───────────────────
+  // Markers fire at every candleIntervalMin boundary visible in the window.
+  // Full-height dashed vertical line + timestamp label at bottom.
+  // 1h boundaries get a brighter line; others use the candle interval colour.
   ctx.font = "9px monospace"; ctx.textAlign = "center";
   const candleMs   = candleIntervalMin * 60 * 1000;
   const firstMark  = Math.ceil(cutoffTime / candleMs) * candleMs;
@@ -2345,6 +2468,7 @@ function renderBookmap() {
     const d   = new Date(t);
     const min = d.getMinutes();
     const is1h = min === 0;
+    // Line style: bright white for 1h, dim teal for candle interval
     ctx.save();
     ctx.strokeStyle  = is1h ? "rgba(255,255,255,0.35)" : "rgba(60,140,180,0.28)";
     ctx.lineWidth    = is1h ? 1 : 0.7;
@@ -2352,6 +2476,7 @@ function renderBookmap() {
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h - 14); ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
+    // Timestamp label
     const label = d.getHours().toString().padStart(2,"0") + ":" + min.toString().padStart(2,"0");
     ctx.fillStyle = is1h ? "#ccddee" : "#7a8a9a";
     ctx.fillText(label, x, h - 3);
@@ -2360,13 +2485,31 @@ function renderBookmap() {
 }
 
 let _lastObRender=0;
-function render(){ resizeBookmapCanvas(); adjustDepth(); updatePriceCenter(); computeDelta(); computeDominance(); if(!priceCenter) return; aggregateBookmapSlice(); renderBookmap(); renderCandles(); renderCVD(); const now=Date.now(); if(now-_lastObRender>=1000){ renderOBPressure(); renderWhaleTable(); _lastObRender=now; } }
+function render(){ 
+  adjustDepth(); 
+  updatePriceCenter(); 
+  computeDelta(); 
+  computeDominance(); 
+  if(!priceCenter) return; 
+  aggregateBookmapSlice(); 
+  renderBookmap(); 
+  renderCandles(); 
+  renderCVD(); 
+  renderAggressionBar();   // <-- here
+  const now=Date.now(); 
+  if(now-_lastObRender>=1000){ 
+    renderOBPressure(); 
+    renderWhaleTable(); 
+    _lastObRender=now; 
+  } 
+}
 
 // ── OB PRESSURE & PLR (unchanged) ────────────────────────────────────────
 // ── v68: Whale Orders Table ───────────────────────────────────────────────
-
-// ── Aggression Sound Alert ───────────────────────────────────────────────────
-// Plays a short tone when buyer or seller aggression crosses 70% threshold.
+// ── Buyer/Seller Aggression Bar ─────────────────────────────────────────────
+// Real-time: reads the last 3s of deltaHistory for immediate response.
+// Volume intensity: bar opacity/saturation scales with recent trade volume.
+// Sound alert: triggered when aggression exceeds 70% threshold.
 let _aggrSoundCtx = null;
 let _aggrLastSound = 0;
 let _aggrLastSide  = '';
@@ -2374,65 +2517,88 @@ let _aggrLastSide  = '';
 function playAggrTone(isBuy) {
   const now = Date.now();
   const side = isBuy ? 'buy' : 'sell';
-  if (now - _aggrLastSound < 5000 && _aggrLastSide === side) return; // throttle 5s per side
-  _aggrLastSound = now;
-  _aggrLastSide  = side;
+  if (now - _aggrLastSound < 5000 && _aggrLastSide === side) return;
+  _aggrLastSound = now; _aggrLastSide = side;
   try {
     if (!_aggrSoundCtx) _aggrSoundCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = _aggrSoundCtx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const ctx = _aggrSoundCtx, osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     osc.type = 'sine';
-    // Buy = higher pitch ascending, Sell = lower pitch descending
     osc.frequency.setValueAtTime(isBuy ? 660 : 330, ctx.currentTime);
     osc.frequency.linearRampToValueAtTime(isBuy ? 880 : 220, ctx.currentTime + 0.12);
     gain.gain.setValueAtTime(0.18, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.25);
   } catch(e) {}
 }
-// ── Buyer/Seller Aggression Bar — independent of OBP settings ───────────────
-// Reads deltaHistory (live trade flow) over a rolling 60s window.
-// Buyer aggression = market buy trades (positive delta entries).
-// Seller aggression = market sell trades (negative delta entries).
 function renderAggressionBar() {
-  const aggrBuyBar   = document.getElementById('aggrBuyBar');
-  const aggrSellBar  = document.getElementById('aggrSellBar');
-  const aggrBuyLbl   = document.getElementById('aggrBuyLabel');
-  const aggrSellLbl  = document.getElementById('aggrSellLabel');
-  const aggrMom      = document.getElementById('aggrMomentum');
-  if (!aggrBuyBar) return;
+  const elBuy  = document.getElementById('aggrBuyBar');
+  const elSell = document.getElementById('aggrSellBar');
+  const elBuyL = document.getElementById('aggrBuyLabel');
+  const elSelL = document.getElementById('aggrSellLabel');
+  const elMom  = document.getElementById('aggrMomentum');
+  if (!elBuy) return;
 
-  const now  = Date.now();
-  const win60 = now - 60000;
+  const now = Date.now();
+  const win15 = now - 15000;
   const win5  = now -  5000;
+  const win30 = now - 30000;
 
-  let buy60 = 0, sell60 = 0, buy5 = 0, sell5 = 0;
+  let buy15 = 0, sell15 = 0, buy5 = 0, sell5 = 0, vol30 = 0;
+
   for (let i = deltaHistory.length - 1; i >= 0; i--) {
     const d = deltaHistory[i];
-    if (d.time < win60) break;
-    if (d.value > 0) { buy60  += d.value;  if (d.time >= win5) buy5  += d.value; }
-    else             { sell60 += Math.abs(d.value); if (d.time >= win5) sell5 += Math.abs(d.value); }
+    if (d.time < win30) break;
+    vol30 += Math.abs(d.value);
+    if (d.time >= win15) {
+      if (d.value > 0) buy15 += d.value;
+      else             sell15 += Math.abs(d.value);
+      if (d.time >= win5) {
+        if (d.value > 0) buy5 += d.value;
+        else             sell5 += Math.abs(d.value);
+      }
+    }
   }
 
-  const tot60 = buy60 + sell60 || 1;
-  const buyPct  = (buy60  / tot60 * 100);
-  const sellPct = (sell60 / tot60 * 100);
+  const tot15 = buy15 + sell15;
+  if (tot15 < 0.001) {
+    elMom.textContent = '— no recent trades —';
+    elMom.style.color = '#556';
+    elBuy.style.width  = '50%';
+    elSell.style.width = '50%';
+    elBuyL.textContent = 'BUY 50%';
+    elSelL.textContent = '50% SELL';
+    elBuy.style.background  = 'linear-gradient(90deg,#005522,#00cc66)';
+    elSell.style.background = 'linear-gradient(90deg,#cc2200,#661100)';
+    return;
+  }
 
-  aggrBuyBar.style.width  = buyPct.toFixed(1)  + '%';
-  aggrSellBar.style.width = sellPct.toFixed(1) + '%';
+  const buyPct  = (buy15 / tot15) * 100;
+  const sellPct = (sell15 / tot15) * 100;
+  const ratio   = buy15 / tot15;
 
-  aggrBuyLbl.textContent  = 'BUY '  + buyPct.toFixed(1)  + '%';
-  aggrSellLbl.textContent = sellPct.toFixed(1) + '% SELL';
+  const avgRate30 = vol30 / 30 + 0.001;
+  const avgRate15 = tot15 / 15;
+  const intensity = Math.min(1, Math.max(0.2, avgRate15 / avgRate30));
 
-  // Colour intensity based on dominance
-  const ratio = buy60 / tot60;
-  aggrBuyBar.style.opacity  = (0.5 + ratio * 0.5).toFixed(2);
-  aggrSellBar.style.opacity = (0.5 + (1 - ratio) * 0.5).toFixed(2);
+  elBuy.style.width  = buyPct.toFixed(1) + '%';
+  elSell.style.width = sellPct.toFixed(1) + '%';
 
-  // 5s momentum label
+  const alpha1 = (0.5 + intensity * 0.5).toFixed(2);
+  const alpha2 = (0.6 + intensity * 0.4).toFixed(2);
+
+  elBuy.style.background = `linear-gradient(90deg,
+    rgba(0, ${Math.round(100 + intensity*155)}, ${Math.round(50 + intensity*50)}, ${alpha1}),
+    rgba(0, ${Math.round(150 + intensity*105)}, ${Math.round(80 + intensity*22)}, ${alpha2})
+  )`;
+  elSell.style.background = `linear-gradient(90deg,
+    rgba(${Math.round(150 + intensity*105)}, ${Math.round(20 + intensity*10)}, 0, ${alpha1}),
+    rgba(${Math.round(100 + intensity*100)}, 0, 0, ${alpha2})
+  )`;
+
+  elBuyL.textContent = 'BUY '  + buyPct.toFixed(1) + '%';
+  elSelL.textContent = sellPct.toFixed(1) + '% SELL';
+
   const tot5 = buy5 + sell5;
   if (tot5 > 0) {
     const r5 = buy5 / tot5;
@@ -2440,17 +2606,16 @@ function renderAggressionBar() {
               : r5 < 0.35 ? '▼ Seller momentum'
               : '↔ Balanced';
     const col = r5 > 0.65 ? '#00cc66' : r5 < 0.35 ? '#cc4422' : '#7a8a9a';
-    aggrMom.textContent  = mom;
-    aggrMom.style.color  = col;
+    elMom.textContent  = mom;
+    elMom.style.color  = col;
   } else {
-    aggrMom.textContent = '— no recent trades —';
-    aggrMom.style.color = '#556';
+    elMom.textContent = '— momentum —';
+    elMom.style.color = '#556';
   }
-  // Sound alert on strong aggression
+
   if (ratio > 0.70) playAggrTone(true);
   else if (ratio < 0.30) playAggrTone(false);
 }
-
 function renderWhaleTable() {
   const tbody   = document.getElementById('whaleTableBody');
   const minLabel = document.getElementById('whaleTableMinVal');
@@ -2589,11 +2754,19 @@ function renderCVD() {
   ctx.beginPath(); ctx.moveTo(0, ZERO_Y); ctx.lineTo(W, ZERO_Y); ctx.stroke();
   if (!bars.length) return;
 
-  // 95th-pct maxDelta — one outlier won't flatten everything else
-  const deltas = bars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
-  const maxDelta = deltas.length
-    ? (deltas[Math.floor(deltas.length * 0.95)] || deltas[deltas.length - 1])
+  // Compute maxDelta from CLOSED bars only (exclude live bar).
+  // If we include the live bar, its partial volume shrinks norm for all bars
+  // and the live bar height never reflects real-time volume growth.
+  const _liveStart = currentCandle ? currentCandle.startTime : -1;
+  const closedBars = bars.filter(c => c.startTime !== _liveStart);
+  const _deltas = closedBars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
+  // 95th-pct of closed bars so one spike doesn't squash the rest
+  const maxDelta = _deltas.length
+    ? (_deltas[Math.floor(_deltas.length * 0.95)] || _deltas[_deltas.length - 1])
     : 1;
+// For the live bar, use a scale that is at least 10% of maxDelta,
+// so it's not dwarfed by old spikes.
+  const liveMax = Math.max(1, maxDelta * 0.1);
 
   cvdBarMap = [];
   let periodDelta1h = 0;
@@ -2611,19 +2784,20 @@ function renderCVD() {
       buy: candle.buyVol, sell: candle.sellVol,
       time: candle.startTime, price: candle.close || 0 });
 
-    const isLiveBar = i === bars.length - 1 && currentCandle && candle.startTime === currentCandle.startTime;
+    // isLive: rightmost bar = current open candle
+    const isLive = (i === bars.length - 1) &&
+      currentCandle && candle.startTime === currentCandle.startTime;
+    // Use separate scale for live bar
+    const scale = isLive ? liveMax : maxDelta;
     const norm = Math.abs(delta) / maxDelta;
-    // Show at least 2px stub for live bar so it's visible even with zero volume
-    const barH = norm < 0.001
-      ? (isLiveBar ? 2 : 0)
-      : Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
+    const barH = Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
 
-    // Live bar pulses with slightly brighter colour so it's identifiable
-    const bullCol = isLiveBar ? 'rgba(0,255,130,0.95)' : 'rgba(0,210,110,0.88)';
-    const bearCol = isLiveBar ? 'rgba(255,80,80,0.95)'  : 'rgba(210,55,55,0.88)';
-    ctx.fillStyle = delta >= 0 ? bullCol : bearCol;
-    if (delta >= 0) ctx.fillRect(x, ZERO_Y - barH, BAR_W - 1, barH);
-    else            ctx.fillRect(x, ZERO_Y,         BAR_W - 1, Math.max(barH, isLiveBar ? 2 : 0));
+    // Live bar is brighter so it's clearly identifiable
+    ctx.fillStyle = delta >= 0
+      ? (isLive ? 'rgba(0,255,140,0.95)' : 'rgba(0,210,110,0.88)')
+      : (isLive ? 'rgba(255,80,80,0.95)'  : 'rgba(210,55,55,0.88)');
+    if (delta >= 0) ctx.fillRect(x, ZERO_Y - Math.max(barH, isLive?2:0), BAR_W - 1, Math.max(barH, isLive?2:0));
+    else            ctx.fillRect(x, ZERO_Y, BAR_W - 1, Math.max(barH, isLive?2:0));
 
     if (barH >= 10 && BAR_W >= 14) {
       const abs   = Math.abs(delta);
@@ -2662,17 +2836,6 @@ function renderCVD() {
     }
   });
 
-  // Cumulative CVD overlay line
-  if (bars.length > 1) {
-    let cum = 0;
-    const pts = bars.map((c,i)=>{ cum+=c.buyVol-c.sellVol; return {x:i*BAR_W+(BAR_W-1)/2,v:cum}; });
-    const lo=Math.min(...pts.map(p=>p.v)), hi=Math.max(...pts.map(p=>p.v)), rng=hi-lo||1;
-    const yT=6, yB=H-24;
-    ctx.save(); ctx.strokeStyle="rgba(255,210,60,0.80)"; ctx.lineWidth=1.5; ctx.lineJoin="round";
-    ctx.beginPath();
-    pts.forEach((p,i)=>{ const y=yB-((p.v-lo)/rng)*(yB-yT); i===0?ctx.moveTo(p.x,y):ctx.lineTo(p.x,y); });
-    ctx.stroke(); ctx.restore();
-  }
   if (bars.length > 1) {
     let cum=0; const pts=bars.map((c,i)=>{ cum+=c.buyVol-c.sellVol; return {x:i*BAR_W+(BAR_W-1)/2,v:cum}; });
     const lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v)),rng=hi-lo||1;
@@ -2684,6 +2847,381 @@ function renderCVD() {
   cvdContainer.scrollLeft = 0;
 }
 
+// ── VOLUME PROFILE ───────────────────────────────────────────────────────
+// Fetches the last-24h buy/sell volume-by-price levels from the
+// get_volume_profile RPC and stores them in volumeProfileData.
+let vpBarMap = []; // [{y, rowH, price, buy, sell, total}, ...] for hover hit-testing
+async function fetchVolumeProfile() {
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rpc/get_volume_profile`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+    );
+    if (!resp.ok) throw new Error(`get_volume_profile HTTP ${resp.status}`);
+    const rows = await resp.json();
+    volumeProfileData = Array.isArray(rows) ? rows : [];
+    renderVolumeProfile();
+  } catch (err) {
+    console.warn('[VolumeProfile] fetchVolumeProfile failed:', err);
+  }
+}
+
+function resizeVolumeProfileCanvas() {
+  const AXIS_W = 58;
+  const rowEl = volumeProfileCanvas.parentElement; // #volumeProfileCanvasRow
+  const availW = (rowEl ? rowEl.clientWidth : 800) - AXIS_W;
+  const w = Math.max(200, Math.round(availW));
+  if (volumeProfileCanvas.width !== w) volumeProfileCanvas.width = w;
+  volumeProfileCanvas.height = 220;
+  vpPriceAxisCanvas.width  = AXIS_W;
+  vpPriceAxisCanvas.height = 220;
+}
+
+
+// v86: cluster the currently-visible price levels together once their
+// on-screen spacing would drop below a legible pixel target — same idea
+// as the bookmap's dynamic bmClusterSize. Because this now runs on the
+// zoomed/windowed subset (not the full 24h dataset), it tracks the real
+// zoom: dragging out widens the window *and* merges levels together,
+// dragging in narrows the window *and* un-merges back to individual bars.
+function clusterVpRows(rows, yScale) {
+  if (rows.length < 2) {
+    return rows.map(r => ({ price: r.price, buy_vol: r.buy_vol || 0, sell_vol: r.sell_vol || 0, count: 1 }));
+  }
+  const rawSpan = (rows[0].price - rows[rows.length - 1].price) || (tickSize || 1);
+  const rawStep = rawSpan / (rows.length - 1) || (tickSize || 1);
+  const TARGET_ROW_PX = 8;
+  const effectiveRawPx = Math.max(0.001, rawStep * yScale);
+  const clusterSize = Math.max(1, Math.min(rows.length, Math.round(TARGET_ROW_PX / effectiveRawPx)));
+
+  if (clusterSize <= 1) {
+    return rows.map(r => ({ price: r.price, buy_vol: r.buy_vol || 0, sell_vol: r.sell_vol || 0, count: 1 }));
+  }
+  const out = [];
+  for (let i = 0; i < rows.length; i += clusterSize) {
+    const chunk = rows.slice(i, i + clusterSize);
+    let buy = 0, sell = 0, priceSum = 0;
+    for (const r of chunk) { buy += r.buy_vol || 0; sell += r.sell_vol || 0; priceSum += r.price; }
+    out.push({ price: priceSum / chunk.length, buy_vol: buy, sell_vol: sell, count: chunk.length });
+  }
+  return out;
+}
+
+// v81/v83/v86: real volume-profile rendering — left side = total volume
+// (stacked buy/sell), right side = net delta only, POC highlight + Value
+// Area High/Low boundary lines, bookmap-style alternating price-row
+// background for easy visual alignment with the price axis, laid out like
+// the bookmap/candlestick canvas-row (plot canvas + dedicated price-axis
+// canvas). Levels cluster together while zoomed out and split back into
+// individual bars while zoomed in.
+function renderVolumeProfile() {
+  resizeVolumeProfileCanvas();
+  const ctx = volumeProfileCtx, axisCtx = vpPriceAxisCtx;
+  const W = volumeProfileCanvas.width, H = volumeProfileCanvas.height;
+  const AW = vpPriceAxisCanvas.width;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0e14';
+  ctx.fillRect(0, 0, W, H);
+  axisCtx.clearRect(0, 0, AW, H);
+  axisCtx.fillStyle = '#0d111a';
+  axisCtx.fillRect(0, 0, AW, H);
+  axisCtx.strokeStyle = '#2a3a4a';
+  axisCtx.lineWidth = 1;
+  axisCtx.beginPath(); axisCtx.moveTo(0, 0); axisCtx.lineTo(0, H); axisCtx.stroke();
+
+  vpBarMap = [];
+  if (!vpShowProfile || !volumeProfileData.length) return;
+
+  const allRows = volumeProfileData; // full 24h dataset, sorted price descending
+  const rawHigh = allRows[0].price, rawLow = allRows[allRows.length - 1].price;
+  const rawSpan = (rawHigh - rawLow) || (tickSize || 1);
+
+  // Drag-to-zoom on the price axis, same "windowed price range" convention
+  // as the bookmap's depth-drag: vertical drag exponentially shrinks/grows
+  // the visible half-span around the range's centre. Down = zoom out
+  // (wider window, more levels compressed together), up = zoom in
+  // (narrower window, fewer levels spread across the full panel height).
+  if (!vpPriceRange) vpPriceRange = rawSpan / 2 * 1.05; // first render: fit the whole 24h range
+  const center = (vpCenterPrice != null) ? vpCenterPrice : (rawHigh + rawLow) / 2;
+  const half = vpPriceRange;
+  const high = center + half, low = center - half;
+  const priceSpan = (high - low) || 1;
+  vpMinPrice = low; vpMaxPrice = high;
+
+  const visibleRaw = allRows.filter(r => r.price >= low && r.price <= high);
+
+  const PAD_TOP = 14, PAD_BOTTOM = 4;
+  const plotH = H - PAD_TOP - PAD_BOTTOM;
+  const yScale = plotH / priceSpan;
+  const priceToY = p => PAD_TOP + (high - p) * yScale;
+  vpRenderHigh = high; vpRenderPadTop = PAD_TOP; vpRenderYScale = yScale;
+
+  if (!visibleRaw.length) {
+    axisCtx.fillStyle = '#5a7a9a';
+    axisCtx.font = '9px monospace';
+    ctx.fillStyle = '#5a7a9a';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('No levels in this price range', W / 2, H / 2);
+    return;
+  }
+
+  // Cluster the visible levels once their on-screen spacing gets too thin —
+  // this is what makes zooming out feel legible instead of overlapping.
+  const rows = clusterVpRows(visibleRaw, yScale);
+
+  const totalVols   = rows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
+  const deltas      = rows.map(r => (r.buy_vol || 0) - (r.sell_vol || 0));
+  const maxTotalVol = Math.max(1, ...totalVols);
+  const maxAbsDelta = Math.max(1, ...deltas.map(d => Math.abs(d)));
+  const grandTotal  = totalVols.reduce((a, b) => a + b, 0) || 1;
+
+  // Point of Control (highest-volume price level) + 70% value area,
+  // the two hallmarks of a real volume-profile read — computed over the
+  // currently visible (zoomed) window, so they stay meaningful as you zoom.
+  let pocIdx = 0;
+  for (let i = 1; i < rows.length; i++) if (totalVols[i] > totalVols[pocIdx]) pocIdx = i;
+  const byVolDesc = rows.map((_, i) => i).sort((a, b) => totalVols[b] - totalVols[a]);
+  const valueAreaSet = new Set();
+  let acc = 0;
+  for (const i of byVolDesc) {
+    valueAreaSet.add(i);
+    acc += totalVols[i];
+    if (acc >= grandTotal * 0.70) break;
+  }
+  // Value Area High / Low — the price bounds of the value-area rows.
+  // Drawn as boundary lines instead of shading every row, so the bars
+  // underneath stay fully legible.
+  let vahPrice = -Infinity, valPrice = Infinity;
+  valueAreaSet.forEach(i => {
+    if (rows[i].price > vahPrice) vahPrice = rows[i].price;
+    if (rows[i].price < valPrice) valPrice = rows[i].price;
+  });
+
+  const zeroX = Math.floor(W / 2);
+  const PAD_SIDE = 8;
+  const maxBarWidth = Math.floor(W / 2) - PAD_SIDE;
+  const rowH = rows.length > 1 ? Math.max(1, plotH / rows.length) : plotH;
+  const barH = Math.max(2, Math.min(rowH - 1, 10));
+  const MIN_BAR_PX = 2; // keeps small-but-nonzero levels from disappearing entirely
+
+  // ── Bookmap-style alternating price-row background, so the profile
+  // lines up visually with the price axis just like the bookmap does ────
+  rows.forEach((r, i) => {
+    const y = priceToY(r.price);
+    if (i % 2 === 0) { ctx.fillStyle = '#11161e'; ctx.fillRect(0, y - rowH / 2, W, rowH); }
+    ctx.strokeStyle = 'rgba(42,58,74,0.35)'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(0, y - rowH / 2); ctx.lineTo(W, y - rowH / 2); ctx.stroke();
+  });
+
+  // Side captions
+  ctx.font = 'bold 8px monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#5a7a9a';
+  ctx.fillText('\u25C0 VOLUME (buy/sell)', 4, 10);
+  ctx.textAlign = 'right';
+  ctx.fillText('DELTA \u25B6', W - 4, 10);
+
+  // Zero / centre line
+  ctx.strokeStyle = '#3a5a7a';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(zeroX, PAD_TOP - 6); ctx.lineTo(zeroX, H); ctx.stroke();
+
+  rows.forEach((r, i) => {
+    const y = priceToY(r.price);
+    const buy = r.buy_vol || 0, sell = r.sell_vol || 0, total = buy + sell;
+    const delta = buy - sell;
+    const isPOC = i === pocIdx;
+
+    vpBarMap.push({ y, rowH, price: r.price, buy, sell, total, delta, count: r.count || 1 });
+
+    // POC rows get a soft glow so the busiest level pops against the
+    // alternating background instead of just being a slightly brighter fill.
+    ctx.save();
+    if (isPOC) { ctx.shadowColor = 'rgba(255,210,60,0.55)'; ctx.shadowBlur = 5; }
+
+    // ── LEFT: total volume, stacked buy (inner) + sell (outer) ─────────
+    let volBarW = Math.round((total / maxTotalVol) * maxBarWidth);
+    if (total > 0) volBarW = Math.max(MIN_BAR_PX, volBarW);
+    const buyW  = total > 0 ? Math.max(buy  > 0 ? 1 : 0, Math.round(volBarW * (buy  / total))) : 0;
+    const sellW = total > 0 ? Math.max(0, volBarW - buyW) : 0;
+    if (buyW > 0) {
+      ctx.fillStyle = isPOC ? '#00ffb4' : '#00d67e';
+      ctx.fillRect(zeroX - buyW, y - barH / 2, buyW, barH);
+    }
+    if (sellW > 0) {
+      ctx.fillStyle = isPOC ? '#ff6a6a' : '#e8453f';
+      ctx.fillRect(zeroX - buyW - sellW, y - barH / 2, sellW, barH);
+    }
+    if (volBarW > 0) {
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = 1;
+      ctx.strokeRect(zeroX - volBarW + 0.5, y - barH / 2 + 0.5, volBarW - 1, barH - 1);
+      if (isPOC) { ctx.shadowColor = 'rgba(255,210,60,0.55)'; ctx.shadowBlur = 5; }
+    }
+
+    // ── RIGHT: net delta only, single colour by sign ───────────────────
+    let deltaW = Math.round((Math.abs(delta) / maxAbsDelta) * maxBarWidth);
+    if (Math.abs(delta) > 0) deltaW = Math.max(MIN_BAR_PX, deltaW);
+    if (deltaW > 0) {
+      ctx.fillStyle = delta >= 0
+        ? (isPOC ? '#00ffb4' : '#00d67e')
+        : (isPOC ? '#ff6a6a' : '#e8453f');
+      ctx.fillRect(zeroX, y - barH / 2, deltaW, barH);
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = 1;
+      ctx.strokeRect(zeroX + 0.5, y - barH / 2 + 0.5, deltaW - 1, barH - 1);
+    }
+    ctx.restore();
+
+    if (isPOC) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,210,60,0.9)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  });
+
+  // Value Area High / Low boundary lines
+  [vahPrice, valPrice].forEach(p => {
+    if (!isFinite(p)) return;
+    const y = priceToY(p);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(140,170,255,0.55)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  });
+
+  // ── Dedicated price axis, same tick logic/style as renderPriceAxis ────
+  const rawStep = priceSpan / 8;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep || 1)));
+  const niceMultiples = [1, 2, 2.5, 5, 10];
+  let labelStep = magnitude;
+  for (const m of niceMultiples) { const c = magnitude * m; if (c >= rawStep) { labelStep = c; break; } }
+
+  axisCtx.font = '9px monospace';
+  axisCtx.textBaseline = 'alphabetic';
+  const labelStart = Math.ceil(low / labelStep) * labelStep;
+  for (let p = labelStart; p <= high; p += labelStep) {
+    const y = priceToY(p);
+    if (y < 8 || y > H - 4) continue;
+    axisCtx.strokeStyle = '#3a5a7a';
+    axisCtx.lineWidth = 1;
+    axisCtx.beginPath(); axisCtx.moveTo(0, y); axisCtx.lineTo(6, y); axisCtx.stroke();
+    axisCtx.fillStyle = '#8aaabb';
+    axisCtx.textAlign = 'left';
+    axisCtx.fillText(p.toFixed(tickDecimals), 8, y + 3);
+  }
+
+  // VAH / VAL labels
+  [{ p: vahPrice, tag: 'VAH' }, { p: valPrice, tag: 'VAL' }].forEach(({ p, tag }) => {
+    if (!isFinite(p)) return;
+    const y = priceToY(p);
+    if (y < 8 || y > H - 4) return;
+    axisCtx.fillStyle = 'rgba(140,170,255,0.9)';
+    axisCtx.font = '7px monospace';
+    axisCtx.textAlign = 'right';
+    axisCtx.fillText(tag, AW - 3, y - 3);
+  });
+
+  // POC label, pinned on the axis so it's never lost among regular ticks
+  const pocY = priceToY(rows[pocIdx].price);
+  if (pocY >= 0 && pocY <= H) {
+    axisCtx.fillStyle = '#1a1a10';
+    axisCtx.fillRect(0, pocY - 6, AW, 12);
+    axisCtx.fillStyle = '#ffd23c';
+    axisCtx.font = 'bold 9px monospace';
+    axisCtx.textAlign = 'left';
+    axisCtx.fillText(rows[pocIdx].price.toFixed(tickDecimals), 8, pocY + 3);
+  }
+}
+
+// Hover tooltip — mirrors the CVD histogram's hover pattern
+volumeProfileCanvas.addEventListener('mousemove', e => {
+  if (vpZoomDragging) { volumeProfileTooltip.style.display = 'none'; return; }
+  const rect = volumeProfileCanvas.getBoundingClientRect();
+  const mouseY = e.clientY - rect.top;
+  const hit = vpBarMap.find(b => mouseY >= b.y - b.rowH / 2 && mouseY < b.y + b.rowH / 2);
+  if (hit) {
+    const bd = (hit.buy - hit.sell).toFixed(2);
+    volumeProfileTooltip.style.display = 'block';
+    const _ttw = volumeProfileTooltip.offsetWidth || 160;
+    volumeProfileTooltip.style.left = Math.max(0, e.clientX - _ttw - 12) + 'px';
+    volumeProfileTooltip.style.top  = (e.clientY - 20) + 'px';
+    volumeProfileTooltip.innerHTML = hit.price.toFixed(tickDecimals) +
+      (hit.count > 1 ? " <span style='color:#5a7a9a'>(" + hit.count + " lvls)</span>" : "") +
+      " &nbsp;|&nbsp;<span style='color:#00ff88'>B:" + hit.buy.toFixed(2) + "</span> " +
+      "<span style='color:#ff4d4d'>S:" + hit.sell.toFixed(2) + "</span> " +
+      "<span style='color:" + (+bd >= 0 ? "#00ff88" : "#ff4d4d") + "'>\u0394" + bd + "</span>";
+  } else {
+    volumeProfileTooltip.style.display = 'none';
+  }
+});
+volumeProfileCanvas.addEventListener('mouseleave', () => { volumeProfileTooltip.style.display = 'none'; });
+
+// Drag-to-zoom anywhere in the VP panel (main plot area or the price
+// axis) — same exponential windowed-range convention as the bookmap's
+// depth-drag: down = zoom out (wider visible range), up = zoom in
+// (narrower visible range). The price under the cursor at drag-start
+// becomes the new zoom centre, so you can zoom in on any region, not just
+// whatever happened to be in the middle.
+function vpStartZoomDrag(e, targetEl) {
+  if (!volumeProfileData.length) return;
+  const rect = targetEl.getBoundingClientRect();
+  const my = e.clientY - rect.top;
+  const clickedPrice = vpRenderHigh - (my - vpRenderPadTop) / vpRenderYScale;
+  if (isFinite(clickedPrice)) vpCenterPrice = clickedPrice;
+
+  vpZoomDragging = true;
+  vpZoomDragStartY = e.clientY;
+  const rawHigh = volumeProfileData[0].price, rawLow = volumeProfileData[volumeProfileData.length - 1].price;
+  vpZoomDragStartRange = vpPriceRange || ((rawHigh - rawLow) / 2 * 1.05) || (tickSize || 1);
+  volumeProfileCanvas.style.cursor = 'ns-resize';
+  vpPriceAxisCanvas.style.cursor = 'ns-resize';
+  dragHint.style.display = 'block';
+  e.preventDefault();
+  renderVolumeProfile();
+}
+vpPriceAxisCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, vpPriceAxisCanvas));
+volumeProfileCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, volumeProfileCanvas));
+window.addEventListener('mousemove', (e) => {
+  if (!vpZoomDragging) return;
+  const dy = e.clientY - vpZoomDragStartY;
+  const rawHigh = volumeProfileData[0].price, rawLow = volumeProfileData[volumeProfileData.length - 1].price;
+  const rawSpan = (rawHigh - rawLow) || (tickSize || 1);
+  const minRange = Math.max(tickSize * 3, rawSpan * 0.01);
+  const maxRange = rawSpan * 4;
+  vpPriceRange = Math.max(minRange, Math.min(maxRange, vpZoomDragStartRange * Math.exp(dy * 0.006)));
+  dragHint.style.left = (e.clientX + 16) + 'px';
+  dragHint.style.top  = (e.clientY - 34) + 'px';
+  dragHint.innerHTML = `&#x2195; VP Range: \u00B1${vpPriceRange.toFixed(tickDecimals)} @ ${(vpCenterPrice || 0).toFixed(tickDecimals)}`;
+  renderVolumeProfile();
+});
+window.addEventListener('mouseup', () => {
+  if (vpZoomDragging) {
+    vpZoomDragging = false;
+    volumeProfileCanvas.style.cursor = 'crosshair';
+    vpPriceAxisCanvas.style.cursor = 'ns-resize';
+    dragHint.style.display = 'none';
+  }
+});
+
+function applyVpShowProfile() {
+  vpShowProfile = vpShowProfileToggle.checked;
+  renderVolumeProfile();
+}
+vpShowProfileToggle.onchange = applyVpShowProfile;
+
+window.addEventListener('resize', () => { if (vpShowProfile) renderVolumeProfile(); });
+
 // WebSockets (unchanged)
 let depthReconnectCount=0, tradesReconnectCount=0;
 function setStreamStatus(el,ok,label){ el.style.background=ok?"#1a3a1a":"#3a1a1a"; el.style.color=ok?"#00ff88":"#ff4d4d"; el.innerText="\u25CF "+label+": "+(ok?"OK":"Reconnecting..."); const allDown=depthStatus.innerText.includes("Reconnecting")&&tradesStatus.innerText.includes("Reconnecting"); connectionAlert.innerText="\u274C All streams down"; connectionAlert.style.display=allDown?"block":"none"; }
@@ -2692,7 +3230,7 @@ function connectTrades(){ const ws=new WebSocket("wss://stream.binance.com:9443/
 
 // Settings (v53 includes new controls and panel states)
 saveBtn.onclick=()=>{
-  const panelIds = ['deltaPanel','signalPanelWrap','obPressureWrap','bookmapBlock','candlestickBlock','candleLogBlock','cvdWrap'];
+  const panelIds = ['deltaPanel','signalPanelWrap','obPressureWrap','bookmapBlock','candlestickBlock','candleLogBlock','cvdWrap','volumeProfileWrap'];
   const panelStates = {};
   panelIds.forEach(id => {
     const body = document.getElementById(id + '-body');
@@ -2717,6 +3255,7 @@ saveBtn.onclick=()=>{
     fpLightMode,
     fpClusterOverlay,
     showWhaleTable,
+    vpShowProfile: vpShowProfileToggle.checked,
     panelStates
   }));
 };
@@ -2753,6 +3292,7 @@ loadBtn.onclick=()=>{ const s=JSON.parse(localStorage.getItem("domSettings")||"{
   if(s.fpLightMode !== undefined) { fpLightMode = s.fpLightMode; applyFpBgMode(); }
   if(s.fpClusterOverlay !== undefined) { fpClusterOverlay = s.fpClusterOverlay; applyFpClusterMode(); }
   if(s.showWhaleTable   !== undefined) { showWhaleTable   = s.showWhaleTable;   applyWhaleTableMode(); }
+  if(s.vpShowProfile    !== undefined) { vpShowProfileToggle.checked = s.vpShowProfile; applyVpShowProfile(); }
   if(s.taControlsOpen !== undefined) {
     const ctrl = document.getElementById('taControls');
     const arrow = document.getElementById('taControlsArrow');
@@ -2771,6 +3311,9 @@ loadBtn.onclick=()=>{ const s=JSON.parse(localStorage.getItem("domSettings")||"{
   depthInput.oninput({target:depthInput}); imbalanceInput.oninput({target:imbalanceInput});
   document.getElementById("deltaWindow").oninput({target:document.getElementById("deltaWindow")});
   document.getElementById("obRangeInput").oninput({target:document.getElementById("obRangeInput")}); initCandles();
+                     
+// Rebuild candles with the newly loaded interval
+  if (candleIntervalMin) { changeCandleInterval(candleIntervalMin); }
 };
 
 // Controls, drag handlers, bookmap tooltip and event listeners
@@ -4064,7 +4607,9 @@ document.getElementById('clearChartData').onclick = clearPersistedData;
 
 // ── logCandleToPeriodLog — persist-patched version ───────────────────────
 function logCandleToPeriodLog(candle) {
-  const time = new Date(candle.startTime), localHours = (time.getUTCHours() + 8) % 24, timeLabel = localHours.toString().padStart(2,'0')+":"+time.getUTCMinutes().toString().padStart(2,'0');
+const d = new Date(candle.startTime);
+const localHours = (d.getUTCHours() + 8) % 24;  // UTC+8 for Manila
+const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes().toString().padStart(2,'0');
   // Guard: skip if this candle's startTime is already in fpLog (prevents duplicate on reload+seed)
   if (fpLog.some(e => e.startTime === candle.startTime)) return;
   const entry = { timeLabel, startTime: candle.startTime, lo: candle.low.toFixed(tickDecimals), hi: candle.high.toFixed(tickDecimals), netDelta: candle.buyVol-candle.sellVol, buy: candle.buyVol, sell: candle.sellVol, open: candle.open, close: candle.close, volume: candle.volume, quiet: false };
@@ -4074,6 +4619,8 @@ function logCandleToPeriodLog(candle) {
 
 // ── PATCH accumulateCVD to auto-save whenever a CVD bar closes ───────────
 function accumulateCVD() {
+  // Close CVD bars at candleIntervalMin boundaries (same resolution as FP candles).
+  // Using cvdInterval (1m) while seeded bars are at 15m creates a 15× scale mismatch.
   const candleMs  = candleIntervalMin * 60 * 1000;
   const now       = Date.now();
   const nextClose = Math.floor(lastCVDTime / candleMs) * candleMs + candleMs;
@@ -4137,7 +4684,7 @@ function seedHistoricalTrades(trades) {
     seedCandle.close = p;
     seedCandle.volume  += qf;
     if (!isSell) seedCandle.buyVol += qf; else seedCandle.sellVol += qf;
-    // No per-candle cap during seeding — full trade detail for POC/imbalance accuracy (v77).
+    // No per-candle cap during seeding — full trade detail for POC/imbalance accuracy (v79).
     if (seedCandle.trades.length < 2000) seedCandle.trades.push({ price: p, size: qf, isSell });
 
     // Also feed live state (heatmap, footprint, delta, strongZones, priceHistory)
@@ -4209,7 +4756,7 @@ function seedHistoricalTrades(trades) {
   }
 
   // Push completed historical buckets (those older than the current live bucket)
-  const liveCVDBucket = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000) + (candleIntervalMin * 60000);
+  const liveCVDBucket = Math.floor(Date.now() / cvdInterval) * cvdInterval + cvdInterval;
   const sortedBuckets = Array.from(cvdBuckets.entries()).sort((a, b) => a[0] - b[0]);
   for (const [bucketTime, data] of sortedBuckets) {
     if (bucketTime >= liveCVDBucket) {
@@ -4438,6 +4985,8 @@ function seedHistoricalEMA() {
 // ── SUPABASE CONFIG ───────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://mol1.fossvps.org:48101';
 const HIST_LOOKBACK_MS = 12 * 60 * 60 * 1000; // 12 hours = 48 CVD bars
+const HIST_PAGE_SIZE   = 1000;
+const HIST_MAX_PAGES   = 50;
 
 // ── PROGRESS BAR HELPERS ──────────────────────────────────────────────────
 const histLoadBanner = document.getElementById('histLoadBanner');
@@ -4460,100 +5009,20 @@ function hideHistBanner(msg, ok) {
     : 'linear-gradient(90deg,#aa5500,#ffaa00)';
   setTimeout(() => { histLoadBanner.style.display = 'none'; }, 3000);
 }
-function groupCandles(rows, intervalMin) {
-  if (!rows.length) return [];
-  const intervalMs = intervalMin * 60000;
-  const candles = [];
-  let cur = null;
-  for (const r of rows) {
-    const bucket = Math.floor(new Date(r.candle_time).getTime() / intervalMs) * intervalMs;
-    // Fix 1: explicitly set startTime so the comparison works
-    if (!cur || cur.startTime !== bucket) {
-      if (cur) candles.push(cur);
-      cur = {
-        startTime: bucket,          // needed for grouping check
-        candle_time: new Date(bucket).toISOString(),
-        open: r.open,
-        high: r.high,
-        low: r.low,
-        close: r.close,
-        volume: 0,
-        buy_vol: 0,
-        sell_vol: 0,
-        trade_count: 0,
-        levels: {}                  // temporary map keyed by real price
-      };
-    }
-    // Aggregate OHLCV
-    cur.high = Math.max(cur.high, r.high);
-    cur.low = Math.min(cur.low, r.low);
-    cur.close = r.close;
-    cur.volume += Number(r.volume);
-    cur.buy_vol += Number(r.buy_vol);
-    cur.sell_vol += Number(r.sell_vol);
-    cur.trade_count += Number(r.trade_count);
 
-    // Fix 2: merge footprint levels – use 'b'/'s' for buy/sell and convert 'p' to real price
-    if (r.levels && Array.isArray(r.levels)) {
-      for (const l of r.levels) {
-        const price = Number(l.p) / 10;    // p is price × 10 (e.g. 695122 → 69512.2)
-        const buy  = Number(l.b) || 0;
-        const sell = Number(l.s) || 0;
-        if (!cur.levels[price]) cur.levels[price] = { buy: 0, sell: 0 };
-        cur.levels[price].buy += buy;
-        cur.levels[price].sell += sell;
-      }
-    }
-  }
-  if (cur) candles.push(cur);
-
-  // Convert the levels map back to the sorted array the dashboard expects
-  return candles.map(c => ({
-    ...c,
-    levels: Object.entries(c.levels)
-      .map(([price, vol]) => ({ price: Number(price), buy: vol.buy, sell: vol.sell }))
-      .sort((a, b) => b.price - a.price)
-  }));
-}
-// ── v79: CANDLE RPC FETCH (mobile) ─────────────────────────────────────────
-async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
-  const headers = {
-    'Content-Type':  'application/json'
-  };
-  const body = JSON.stringify({
-    p_from:         new Date(fromMs).toISOString(),
-    p_to:           new Date(toMs).toISOString(),
-    p_interval_min: 1,                   // always fetch fast 1‑minute candles
-    p_tick_size:    tickSz
-  });
-  const resp = await fetch(
-    `${SUPABASE_URL}/rpc/get_candles`,
-    { method: 'POST', headers, body }
-  );
-  if (!resp.ok) throw new Error(`get_candles HTTP ${resp.status}`);
-  const rows = await resp.json();
-  return groupCandles(rows, intervalMin);   // group into desired interval
-}
-// ── v77: SEED HISTORICAL CANDLES ──────────────────────────────────────────
-// Converts RPC candle rows directly into candles[] + cvdData[] + footprint.
-// No raw-trade loop. Runs in O(rows × levels_per_row) — typically <50ms.
-
+// ── v79: SEED HISTORICAL CANDLES ──────────────────────────────────────────
 function seedHistoricalCandles(rows) {
   if (!rows || !rows.length) return;
   _seedingInProgress = true;
 
-  // rows are already sorted ASC by candle_time from the RPC
-  const liveBoundary = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
-  const liveCVDBucket = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000) + (candleIntervalMin * 60000);
+  const liveBoundary  = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
+  const candleMs      = candleIntervalMin * 60000;
+  const liveCVDBucket = Math.floor(Date.now() / candleMs) * candleMs + candleMs;
 
   for (const row of rows) {
     const startTime = new Date(row.candle_time).getTime();
-    const levels    = row.levels || [];          // [{ price, buy, sell }]
+    const levels    = row.levels || [];
 
-    // ── Build trades array from levels for FP-Quality evaluator ───────────
-    // Each level entry becomes two synthetic trade records (buy side + sell side).
-    // Price and direction are preserved; sub-tick ordering within a level is lost
-    // (acceptable — POC, imbalance, and volume shape are all accurate).
     const trades = [];
     for (const lv of levels) {
       const p = parseFloat(lv.price);
@@ -4572,18 +5041,16 @@ function seedHistoricalCandles(rows) {
       volume:   parseFloat(row.volume),
       buyVol:   parseFloat(row.buy_vol),
       sellVol:  parseFloat(row.sell_vol),
-      trades                               // used by FP-Quality + POC
+      trades
     };
 
     if (startTime < liveBoundary) {
-      // Closed historical candle
       if (!candles.some(c => c.startTime === startTime)) {
         candles.push(candle);
         if (candles.length > 500) candles.shift();
         logCandleToPeriodLog(candle);
       }
     } else {
-      // Current open candle — merge into existing currentCandle
       if (!currentCandle) {
         currentCandle = candle;
       } else {
@@ -4598,7 +5065,7 @@ function seedHistoricalCandles(rows) {
       }
     }
 
-    // ── Footprint / heatmap from levels ───────────────────────────────────
+    // Footprint / heatmap
     for (const lv of levels) {
       const p   = parseFloat(lv.price);
       const b   = parseFloat(lv.buy)  || 0;
@@ -4617,16 +5084,17 @@ function seedHistoricalCandles(rows) {
         strongZones[formatPrice(Math.floor(p / (tickSize * 5)) * (tickSize * 5))] = true;
     }
 
-    // ── CVD: split candle volume across its constituent 1m CVD buckets ────────
     // CVD — one entry per candle (matches FP pill resolution)
     // Splitting into 1m sub-buckets divides buy/sell by numBuckets, compressing
     // delta by 5× and making it impossible to match FP pill values.
+    // Store the full candle buy/sell as a single CVD bar at candle close time.
     {
       const buyVol  = parseFloat(row.buy_vol);
       const sellVol = parseFloat(row.sell_vol);
       const closeP  = parseFloat(row.close);
       const candleCloseTime = startTime + candleIntervalMin * 60000;
       if (candleCloseTime >= liveCVDBucket) {
+        // Current open candle — seed live temps
         cvdBuyTemp  += buyVol;
         cvdSellTemp += sellVol;
       } else {
@@ -4636,7 +5104,6 @@ function seedHistoricalCandles(rows) {
       }
     }
 
-    // ── priceHistory for priceCenter fallback ─────────────────────────────
     priceHistory.push(parseFloat(row.close));
     if (priceHistory.length > 10) priceHistory.shift();
   }
@@ -4759,7 +5226,7 @@ bookmapCanvas.addEventListener('mousemove',e=>{ if(isDragging){ bmTooltip.style.
 bookmapCanvas.addEventListener('click',e=>{ if(isDragging) return; const rect=bookmapCanvas.getBoundingClientRect(); const cx=e.clientX-rect.left, cy=e.clientY-rect.top; const info=getBmHitInfo(cx,cy); if(info&&info.items.length>0){ bmTooltipPinned=true; renderBmTooltip(info,e.clientX,e.clientY); } else { bmTooltipPinned=false; bmTooltip.classList.remove('pinned'); bmTooltip.style.display='none'; } });
 bookmapCanvas.addEventListener('mouseleave',()=>{ if(!bmTooltipPinned) bmTooltip.style.display='none'; });
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden) render(); });
-window.addEventListener('resize',()=>{ resizeBookmapCanvas(); render(); });
+window.addEventListener('resize',()=>{ render(); });
 window.addEventListener('resize', resizeCandlestickCanvas);
 
 // ── PHASE 3 — trade-buffer flush: must run before connectTrades fires ─────
@@ -4772,6 +5239,11 @@ setInterval(() => {
     tradeEventBuffer = [];
   }
 }, TRADE_BUFFER_MS);
+ 
+// ── SUPABASE PAGINATED FETCH — v79 (Aiven PostgREST) ──────────────────────
+// Fetches raw trades from Aiven via the PostgREST REST API.
+// Uses pagination (Range headers) and optional localStorage caching.
+    
 async function fetchCandles(fromMs, toMs, intervalMin, tickSz) {
   const headers = { 'Content-Type': 'application/json' };
   const body = JSON.stringify({
@@ -4800,16 +5272,18 @@ async function bootstrap() {
   fpLogNextTime = nextClockBoundary(fpLogWindowMs);
   lastCVDTime   = Math.floor(Date.now() / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
   restorePersistedData();
-  resizeBookmapCanvas();
   resizeCandlestickCanvas();
-  setTimeout(() => { resizeBookmapCanvas(); resizeCandlestickCanvas(); }, 300);
+  setTimeout(resizeCandlestickCanvas, 300);
 
   // ── Phase 2: order book — start as early as possible ────────────────
   setHistProgress(5, 'Connecting order book…');
   seedOrderBook();
   connectDepth();
 
-      // ── Phase 4: fetch pre-aggregated candles from Aiven RPC ──────────
+  // ── Phase 2b: volume profile (24h buy/sell-by-price) ─────────────────
+  fetchVolumeProfile();
+  
+    // ── Phase 4: fetch pre-aggregated candles from Aiven RPC ──────────
     let candleRows = [];
     try {
       const fromMs = Date.now() - HIST_LOOKBACK_MS;
@@ -4862,6 +5336,7 @@ async function bootstrap() {
       `Ready — ${candleCount} candle${candleCount !== 1 ? 's' : ''} seeded from ${candleRows.length} RPC rows`,
       true
     );
+    
   // ── Phase 8  T+500ms: render loop ────────────────────────────────────
   // Bookmap + candles — give the order book at least one snapshot cycle
   // before rendering so the first frame isn't empty.
@@ -4875,15 +5350,10 @@ async function bootstrap() {
     setInterval(() => { updateFpLogTimer(); }, 250);
     (function cvdProg(){
       const pb=document.getElementById("cvdProgressBar");
-      function t(){ if(pb){ const ms=candleIntervalMin*60000; pb.style.width=((Date.now()%ms)/ms*100).toFixed(1)+"%"; } requestAnimationFrame(t); } t();
-    })();
-
-    (function cvdProgress(){
-      const pb=document.getElementById("cvdProgressBar");
-      function tick(){
+      function t(){
         if(pb){ const ms=candleIntervalMin*60000; pb.style.width=((Date.now()%ms)/ms*100).toFixed(1)+"%"; }
-        requestAnimationFrame(tick);
-      } tick();
+        requestAnimationFrame(t);
+      } t();
     })();
 
   }, 1000);
