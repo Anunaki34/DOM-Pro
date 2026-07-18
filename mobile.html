@@ -109,13 +109,14 @@ button,input { margin:3px; width:60px; font-size:10px; }
 #signalLog .sl-bear { color:#ff4d4d; }
 #signalControls { display:flex; gap:8px; align-items:center; justify-content:center; margin-top:4px; font-size:10px; }
 #signalControls label { color:#556; }
-#cvdHistogram { width:100%; height:220px; background:#12171f; overflow-x:auto; overflow-y:hidden; border:1px solid #2a3a4a; position:relative; cursor:crosshair; margin-top:10px; }
-#cvdCanvas { display:block; height:220px; }
+#cvdHistogram { width:100%; height:220px; background:#12171f; overflow:hidden; border:1px solid #2a3a4a; position:relative; cursor:crosshair; margin-top:10px; display:flex; flex-direction:row; }
+#cvdCanvas { display:block; height:220px; flex:1; min-width:0; }
+#cvdAxisCanvas { display:block; height:220px; width:46px; flex-shrink:0; background:#0d111a; border-left:1px solid #2a3a4a; }
 #cvdTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
 /* Volume Profile — mirrors the candlestick canvas-row / price-axis layout */
 #volumeProfileCanvasRow { display:flex; flex-direction:row; position:relative; width:100%; flex-shrink:0; }
-#volumeProfileCanvas { flex:1; min-width:0; height:220px; background:#0a0e14; cursor:crosshair; display:block; }
-#volumeProfilePriceAxisCanvas { width:58px; height:220px; flex-shrink:0; background:#0d111a; border-left:1px solid #2a3a4a; cursor:ns-resize; display:block; }
+#volumeProfileCanvas { flex:1; min-width:0; height:220px; background:#0a0e14; cursor:crosshair; display:block; touch-action:none; }
+#volumeProfilePriceAxisCanvas { width:58px; height:220px; flex-shrink:0; background:#0d111a; border-left:1px solid #2a3a4a; cursor:ns-resize; display:block; touch-action:none; }
 #volumeProfileTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
 #signalBadge.ms-accumulation { background:rgba(0,200,255,0.15); color:#00ccff; border-color:#00ccff; }
 #signalBadge.ms-distribution { background:rgba(255,100,220,0.15); color:#ff64dc; border-color:#ff64dc; }
@@ -167,6 +168,7 @@ button,input { margin:3px; width:60px; font-size:10px; }
 #priceAxisCanvas {
   width:58px; height:400px; flex-shrink:0; background:#0d111a;
   border-left:1px solid #2a3a4a; cursor:ew-resize; display:block;
+  touch-action:none;
 }
 /* Crosshair overlay on canvas row */
 #candleCrosshair {
@@ -978,6 +980,7 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
   <div class="panel-collapsible" id="cvdWrap-body" style="max-height:240px;">
     <div id="cvdHistogram">
       <canvas id="cvdCanvas"></canvas>
+      <canvas id="cvdAxisCanvas"></canvas>
       <div id="cvdTooltip"></div>
     </div>
   </div>
@@ -1122,6 +1125,7 @@ const dragHint = document.getElementById('dragHint');
 
 // DOM refs
 const cvdContainer = document.getElementById("cvdHistogram"), cvdCanvas = document.getElementById("cvdCanvas"), cvdCtx = cvdCanvas.getContext("2d");
+const cvdAxisCanvas = document.getElementById("cvdAxisCanvas"), cvdAxisCtx = cvdAxisCanvas.getContext("2d");
 const cvdTooltip = document.getElementById("cvdTooltip"), depthInput = document.getElementById("depthInput"), imbalanceInput = document.getElementById("imbalanceInput");
 const deltaBox = document.getElementById("deltaBox"), resetDeltaBtn = document.getElementById("resetDelta");
 const heatmapToggle = document.getElementById("heatmapToggle"), imbalanceToggle = document.getElementById("imbalanceToggle"), modeToggle = document.getElementById("modeToggle");
@@ -2249,26 +2253,36 @@ candlestickCanvas.addEventListener('mouseleave', () => {
 });
 
 // ── v54: PRICE AXIS DRAG (compress / decompress) ──────────────────────────
-priceAxisCanvas.addEventListener('mousedown', (e) => {
+function priceAxisDragStart(e) {
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
   priceAxisDragging = true;
-  priceAxisDragStartY = e.clientY;
+  priceAxisDragStartY = clientY;
   priceAxisDragStartZoom = priceAxisZoom;
   priceAxisCanvas.style.cursor = 'ns-resize';
   e.preventDefault();
-});
-window.addEventListener('mousemove', (e) => {
+}
+function priceAxisDragMove(e) {
   if (!priceAxisDragging) return;
+  e.preventDefault();
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
   // TradingView convention: drag DOWN = zoom out (more range), drag UP = zoom in (less range)
-  const dy = e.clientY - priceAxisDragStartY; // positive when dragging down
+  const dy = clientY - priceAxisDragStartY; // positive when dragging down
   const factor = 1 + dy * 0.005;
   priceAxisZoom = Math.max(0.1, Math.min(10, priceAxisDragStartZoom * factor));
-});
-window.addEventListener('mouseup', () => {
+}
+function priceAxisDragEnd() {
   if (priceAxisDragging) {
     priceAxisDragging = false;
     priceAxisCanvas.style.cursor = 'ew-resize';
   }
-});
+}
+priceAxisCanvas.addEventListener('mousedown', priceAxisDragStart);
+window.addEventListener('mousemove', priceAxisDragMove);
+window.addEventListener('mouseup', priceAxisDragEnd);
+priceAxisCanvas.addEventListener('touchstart', priceAxisDragStart, { passive: false });
+window.addEventListener('touchmove', priceAxisDragMove, { passive: false });
+window.addEventListener('touchend', priceAxisDragEnd);
+window.addEventListener('touchcancel', priceAxisDragEnd);
 
 function renderFpLog() {
   if (!fpLogBody) return;
@@ -2738,13 +2752,17 @@ function renderCVD() {
   if (!src.length) return;
 
   const TOTAL_BARS = 48;
-  const bars  = src.slice(-TOTAL_BARS);
-  const H     = 220, ZERO_Y = Math.floor(H / 2);
-  const W     = cvdContainer.clientWidth || 800;
-  const BAR_W = Math.max(4, Math.floor(W / TOTAL_BARS));
+  const bars   = src.slice(-TOTAL_BARS);
+  const H      = 220, ZERO_Y = Math.floor(H / 2);
+  const AXIS_W = 46;
+  const totalW = cvdContainer.clientWidth || 800;
+  const W      = Math.max(120, totalW - AXIS_W);
+  const BAR_W  = Math.max(4, Math.floor(W / TOTAL_BARS));
 
   cvdCanvas.width  = W;
   cvdCanvas.height = H;
+  cvdAxisCanvas.width  = AXIS_W;
+  cvdAxisCanvas.height = H;
   cvdLastRenderedCount = bars.length;
 
   const ctx = cvdCtx;
@@ -2752,21 +2770,62 @@ function renderCVD() {
   ctx.fillStyle = '#12171f'; ctx.fillRect(0, 0, W, H);
   ctx.strokeStyle = '#333'; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(0, ZERO_Y); ctx.lineTo(W, ZERO_Y); ctx.stroke();
+
+  const axCtx = cvdAxisCtx;
+  axCtx.clearRect(0, 0, AXIS_W, H);
+  axCtx.fillStyle = '#0d111a'; axCtx.fillRect(0, 0, AXIS_W, H);
+  axCtx.strokeStyle = '#2a3a4a'; axCtx.lineWidth = 1;
+  axCtx.beginPath(); axCtx.moveTo(0, 0); axCtx.lineTo(0, H); axCtx.stroke();
+
   if (!bars.length) return;
 
-  // Compute maxDelta from CLOSED bars only (exclude live bar).
-  // If we include the live bar, its partial volume shrinks norm for all bars
-  // and the live bar height never reflects real-time volume growth.
-  const _liveStart = currentCandle ? currentCandle.startTime : -1;
-  const closedBars = bars.filter(c => c.startTime !== _liveStart);
-  const _deltas = closedBars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
-  // 95th-pct of closed bars so one spike doesn't squash the rest
+  // v87: one shared scale for every bar, live bar included. Previously the
+  // live (forming) bar was supposed to use a separate, more sensitive
+  // "liveMax" scale so its growth was visible sooner — but that scale was
+  // computed and then never actually applied (norm always divided by the
+  // closed-bar maxDelta), so the forming bar barely moved until it closed
+  // and the next render picked it up as a "closed" bar with fresh history.
+  // Folding the live bar's current delta into the same pool it's measured
+  // against means its bar grows in real time, on every 250ms render tick,
+  // against the same scale the reference axis shows — no reload needed.
+  const _deltas = bars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
+  // 95th-pct so one historical spike doesn't flatten every other bar
   const maxDelta = _deltas.length
-    ? (_deltas[Math.floor(_deltas.length * 0.95)] || _deltas[_deltas.length - 1])
+    ? Math.max(1, _deltas[Math.floor(_deltas.length * 0.95)] || _deltas[_deltas.length - 1])
     : 1;
-// For the live bar, use a scale that is at least 10% of maxDelta,
-// so it's not dwarfed by old spikes.
-  const liveMax = Math.max(1, maxDelta * 0.1);
+
+  // ── Reference axis: same scale the bars use, so the forming bar's
+  // growth can be read directly against a fixed ruler instead of judged
+  // by eye. ──────────────────────────────────────────────────────────
+  function fmtDelta(v) {
+    const abs = Math.abs(v);
+    return abs >= 1000 ? (abs / 1000).toFixed(1) + 'k' : abs.toFixed(0);
+  }
+  axCtx.font = '9px monospace';
+  axCtx.textAlign = 'left';
+  const usableHalf = ZERO_Y - 4;
+  [1, 0.5, 0].forEach(frac => {
+    const val = maxDelta * frac;
+    const dy  = Math.round(usableHalf * frac);
+    const yUp = ZERO_Y - dy, yDn = ZERO_Y + dy;
+    axCtx.strokeStyle = frac === 0 ? '#3a5a7a' : 'rgba(42,58,74,0.5)';
+    axCtx.beginPath(); axCtx.moveTo(0, yUp); axCtx.lineTo(6, yUp); axCtx.stroke();
+    axCtx.fillStyle = frac === 0 ? '#8aaabb' : '#5a7a9a';
+    axCtx.fillText((frac === 0 ? '0' : '+' + fmtDelta(val)), 8, yUp + 3);
+    if (frac > 0) {
+      axCtx.beginPath(); axCtx.moveTo(0, yDn); axCtx.lineTo(6, yDn); axCtx.stroke();
+      axCtx.fillText('-' + fmtDelta(val), 8, yDn + 3);
+      // faint full-width reference lines on the bar canvas itself, so the
+      // "ceiling" is visible right where the bars are, not just on the axis
+      ctx.save();
+      ctx.strokeStyle = frac === 1 ? 'rgba(140,170,255,0.25)' : 'rgba(140,170,255,0.12)';
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.moveTo(0, yUp); ctx.lineTo(W, yUp); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, yDn); ctx.lineTo(W, yDn); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  });
 
   cvdBarMap = [];
   let periodDelta1h = 0;
@@ -2787,8 +2846,6 @@ function renderCVD() {
     // isLive: rightmost bar = current open candle
     const isLive = (i === bars.length - 1) &&
       currentCandle && candle.startTime === currentCandle.startTime;
-    // Use separate scale for live bar
-    const scale = isLive ? liveMax : maxDelta;
     const norm = Math.abs(delta) / maxDelta;
     const barH = Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
 
@@ -3175,13 +3232,15 @@ volumeProfileCanvas.addEventListener('mouseleave', () => { volumeProfileTooltip.
 // whatever happened to be in the middle.
 function vpStartZoomDrag(e, targetEl) {
   if (!volumeProfileData.length) return;
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
   const rect = targetEl.getBoundingClientRect();
-  const my = e.clientY - rect.top;
+  const my = clientY - rect.top;
   const clickedPrice = vpRenderHigh - (my - vpRenderPadTop) / vpRenderYScale;
   if (isFinite(clickedPrice)) vpCenterPrice = clickedPrice;
 
   vpZoomDragging = true;
-  vpZoomDragStartY = e.clientY;
+  vpZoomDragStartY = clientY;
   const rawHigh = volumeProfileData[0].price, rawLow = volumeProfileData[volumeProfileData.length - 1].price;
   vpZoomDragStartRange = vpPriceRange || ((rawHigh - rawLow) / 2 * 1.05) || (tickSize || 1);
   volumeProfileCanvas.style.cursor = 'ns-resize';
@@ -3190,29 +3249,39 @@ function vpStartZoomDrag(e, targetEl) {
   e.preventDefault();
   renderVolumeProfile();
 }
-vpPriceAxisCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, vpPriceAxisCanvas));
-volumeProfileCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, volumeProfileCanvas));
-window.addEventListener('mousemove', (e) => {
+function vpZoomDragMove(e) {
   if (!vpZoomDragging) return;
-  const dy = e.clientY - vpZoomDragStartY;
+  e.preventDefault();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  const dy = clientY - vpZoomDragStartY;
   const rawHigh = volumeProfileData[0].price, rawLow = volumeProfileData[volumeProfileData.length - 1].price;
   const rawSpan = (rawHigh - rawLow) || (tickSize || 1);
   const minRange = Math.max(tickSize * 3, rawSpan * 0.01);
   const maxRange = rawSpan * 4;
   vpPriceRange = Math.max(minRange, Math.min(maxRange, vpZoomDragStartRange * Math.exp(dy * 0.006)));
-  dragHint.style.left = (e.clientX + 16) + 'px';
-  dragHint.style.top  = (e.clientY - 34) + 'px';
+  dragHint.style.left = (clientX + 16) + 'px';
+  dragHint.style.top  = (clientY - 34) + 'px';
   dragHint.innerHTML = `&#x2195; VP Range: \u00B1${vpPriceRange.toFixed(tickDecimals)} @ ${(vpCenterPrice || 0).toFixed(tickDecimals)}`;
   renderVolumeProfile();
-});
-window.addEventListener('mouseup', () => {
+}
+function vpZoomDragEnd() {
   if (vpZoomDragging) {
     vpZoomDragging = false;
     volumeProfileCanvas.style.cursor = 'crosshair';
     vpPriceAxisCanvas.style.cursor = 'ns-resize';
     dragHint.style.display = 'none';
   }
-});
+}
+vpPriceAxisCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, vpPriceAxisCanvas));
+volumeProfileCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, volumeProfileCanvas));
+window.addEventListener('mousemove', vpZoomDragMove);
+window.addEventListener('mouseup', vpZoomDragEnd);
+vpPriceAxisCanvas.addEventListener('touchstart', (e) => vpStartZoomDrag(e, vpPriceAxisCanvas), { passive: false });
+volumeProfileCanvas.addEventListener('touchstart', (e) => vpStartZoomDrag(e, volumeProfileCanvas), { passive: false });
+window.addEventListener('touchmove', vpZoomDragMove, { passive: false });
+window.addEventListener('touchend', vpZoomDragEnd);
+window.addEventListener('touchcancel', vpZoomDragEnd);
 
 function applyVpShowProfile() {
   vpShowProfile = vpShowProfileToggle.checked;
