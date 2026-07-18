@@ -110,6 +110,11 @@ button,input { margin:3px; width:60px; font-size:10px; }
 #cvdHistogram { width:100%; height:220px; background:#12171f; overflow-x:auto; overflow-y:hidden; border:1px solid #2a3a4a; position:relative; cursor:crosshair; margin-top:10px; }
 #cvdCanvas { display:block; height:220px; }
 #cvdTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
+/* Volume Profile — mirrors the candlestick canvas-row / price-axis layout */
+#volumeProfileCanvasRow { display:flex; flex-direction:row; position:relative; width:100%; flex-shrink:0; }
+#volumeProfileCanvas { flex:1; min-width:0; height:220px; background:#0a0e14; cursor:crosshair; display:block; }
+#volumeProfilePriceAxisCanvas { width:58px; height:220px; flex-shrink:0; background:#0d111a; border-left:1px solid #2a3a4a; cursor:ns-resize; display:block; }
+#volumeProfileTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
 #signalBadge.ms-accumulation { background:rgba(0,200,255,0.15); color:#00ccff; border-color:#00ccff; }
 #signalBadge.ms-distribution { background:rgba(255,100,220,0.15); color:#ff64dc; border-color:#ff64dc; }
 #signalBadge.ms-bull-aggression { background:rgba(0,255,136,0.18); color:#00ff88; border-color:#00ff88; }
@@ -559,12 +564,12 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   margin-left: auto; color: #2a5a7a; font-size: 8px;
 }
 
-/* ── Aggression Bar ─────────────────────────────────────────── */
+/* ── Aggression Bar ──────────────────────────────────────────── */
 #aggrBarSection { margin:6px 0 2px 0; }
 #aggrBarTitle   { font-size:9px; color:#556; letter-spacing:1px; text-transform:uppercase; margin-bottom:4px; }
 #aggrBarWrap    { width:340px; height:8px; background:#1a2233; border-radius:4px; overflow:hidden; display:flex; margin:0 auto 2px auto; }
-#aggrBuyBar     { height:100%; background:linear-gradient(90deg,#005522,#00cc66); transition:width 0.3s ease; }
-#aggrSellBar    { height:100%; background:linear-gradient(90deg,#cc2200,#661100); transition:width 0.3s ease; }
+#aggrBuyBar  { height:100%; }
+#aggrSellBar { height:100%; }
 #aggrLabels     { display:flex; justify-content:space-between; width:340px; margin:0 auto; font-size:9px; font-family:monospace; }
 #aggrBuyLabel   { color:#00cc66; }
 #aggrSellLabel  { color:#cc4422; text-align:right; }
@@ -682,16 +687,16 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
 
         <!-- Buyer / Seller Aggression Bar -->
         <div id="aggrBarSection">
-          <div id="aggrBarTitle">Trade Aggression (60s)</div>
+          <div id="aggrBarTitle">Trade Aggression (3s real-time)</div>
           <div id="aggrBarWrap">
-            <div id="aggrBuyBar"  style="width:50%;"></div>
-            <div id="aggrSellBar" style="width:50%;"></div>
+            <div id="aggrBuyBar"  style="width:50%;background:linear-gradient(90deg,#005522,#00cc66);"></div>
+            <div id="aggrSellBar" style="width:50%;background:linear-gradient(90deg,#cc2200,#661100);"></div>
           </div>
           <div id="aggrLabels">
             <span id="aggrBuyLabel">BUY 50%</span>
             <span id="aggrSellLabel">50% SELL</span>
           </div>
-          <div id="aggrMomentum">— momentum —</div>
+          <div id="aggrMomentum">— waiting for trades —</div>
         </div>
         <div id="obRangeLine">Scanning &mdash;</div>
         <div id="obWhaleAlert" style="color:#888;"></div>
@@ -916,6 +921,30 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
   </div>
 </div>
 
+<!-- Full-width Volume Profile panel with hide toggle -->
+<div id="volumeProfileWrap">
+  <div class="panel-toggle-bar" style="cursor:pointer;" onclick="togglePanel('volumeProfileWrap')">
+    <span>&#11035; Volume Profile</span>
+    <span style="display:flex; align-items:center; gap:8px;">
+      <label style="cursor:pointer; display:flex; align-items:center; gap:3px; font-size:9px; color:#8aaabb; font-family:monospace;" onclick="event.stopPropagation()">
+        <input type="checkbox" id="vpShowProfileToggle" checked style="cursor:pointer;"> Show Profile
+      </label>
+      <button id="vpRefreshBtn" onclick="event.stopPropagation(); fetchVolumeProfile();" style="font-size:9px;font-family:monospace;background:#1a2233;color:#8aaabb;border:1px solid #2a3a4a;border-radius:3px;padding:2px 6px;cursor:pointer;">&#8635; Refresh</button>
+      <span class="ptb-arrow">&#9660;</span>
+    </span>
+  </div>
+  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:260px;">
+    <div id="volumeProfileCanvasRow">
+      <canvas id="volumeProfileCanvas"></canvas>
+      <canvas id="volumeProfilePriceAxisCanvas" width="58" height="220"></canvas>
+    </div>
+    <div style="font-size:9px;color:#3a5a7a;text-align:center;font-family:monospace;letter-spacing:0.5px;padding:2px 0;">
+      &#x2195; Drag price axis = Zoom
+    </div>
+    <div id="volumeProfileTooltip"></div>
+  </div>
+</div>
+
 <div id="dragHint"></div>
 <div id="bmTooltip"></div>
 <div id="candleHoverTooltip"></div>
@@ -1003,6 +1032,33 @@ const candleCrosshairCanvas = document.getElementById("candleCrosshair"), crossh
 const candleTotalDelta = document.getElementById("candleTotalDelta"), candleIntervalInput = document.getElementById("candleInterval");
 const candleVisibleCountInput = document.getElementById("candleVisibleCount"), candleHoverTooltip = document.getElementById("candleHoverTooltip");
 let cvdShowMarkers = false;
+
+// ── Volume Profile ──────────────────────────────────────────────────────
+const volumeProfileWrap      = document.getElementById("volumeProfileWrap");
+const volumeProfileCanvas    = document.getElementById("volumeProfileCanvas");
+const volumeProfileCtx       = volumeProfileCanvas.getContext("2d");
+const vpPriceAxisCanvas      = document.getElementById("volumeProfilePriceAxisCanvas");
+const vpPriceAxisCtx         = vpPriceAxisCanvas.getContext("2d");
+const volumeProfileTooltip   = document.getElementById("volumeProfileTooltip");
+const vpShowProfileToggle    = document.getElementById("vpShowProfileToggle");
+let volumeProfileData = [];   // [{price, buy_vol, sell_vol}, ...] sorted desc by price
+let vpShowProfile = true;
+// v80: drag-to-zoom on the volume-profile price axis, same convention as
+// the candlestick chart's priceAxisZoom (drag down = zoom out, up = zoom in)
+// v84: drag-to-zoom on the volume-profile price axis, same "windowed
+// price range" convention as the bookmap's depth-drag (exponential scale
+// factor per pixel of vertical drag). vpPriceRange is the visible
+// half-span in price units; 0 means "not yet initialised — show full 24h
+// range on first render".
+let vpPriceRange = 0, vpZoomDragging = false, vpZoomDragStartY = 0, vpZoomDragStartRange = 0;
+let vpMinPrice = 0, vpMaxPrice = 0; // current rendered range, used for hover/tooltip
+// v85: zoom can be anchored anywhere in the VP area, not just the axis —
+// vpCenterPrice holds the price the view is currently centred on (null =
+// dataset midpoint, the default before the user has dragged anything).
+// vpRender* cache the last render's price<->y mapping so a mousedown
+// anywhere in the panel can be converted straight to a price to zoom on.
+let vpCenterPrice = null;
+let vpRenderHigh = 0, vpRenderPadTop = 14, vpRenderYScale = 1;
 
 // v53: store candle rendering range for accurate hover tooltip
 let candleMinPrice = 0, candleMaxPrice = 0;
@@ -1161,6 +1217,8 @@ function updateCandleWithTrade(price, qty, isSell) {
       lastClosedBoundary = currentCandle.startTime;
     }
     currentCandle = { startTime: boundary, open: price, high: price, low: price, close: price, volume:0, buyVol:0, sellVol:0, trades:[] };
+// Force a fresh CVD render with the new closed candle
+    renderCVD();
   }
   const p = parseFloat(price), qf = parseFloat(qty);
   // Set open from first real trade if sentinel 0 is still set
@@ -2296,13 +2354,31 @@ function renderBookmap() {
 }
 
 let _lastObRender=0;
-function render(){ adjustDepth(); updatePriceCenter(); computeDelta(); computeDominance(); if(!priceCenter) return; aggregateBookmapSlice(); renderBookmap(); renderCandles(); renderCVD(); renderAggressionBar(); const now=Date.now(); if(now-_lastObRender>=1000){ renderOBPressure(); renderWhaleTable(); _lastObRender=now; } }
+function render(){ 
+  adjustDepth(); 
+  updatePriceCenter(); 
+  computeDelta(); 
+  computeDominance(); 
+  if(!priceCenter) return; 
+  aggregateBookmapSlice(); 
+  renderBookmap(); 
+  renderCandles(); 
+  renderCVD(); 
+  renderAggressionBar();   // <-- here
+  const now=Date.now(); 
+  if(now-_lastObRender>=1000){ 
+    renderOBPressure(); 
+    renderWhaleTable(); 
+    _lastObRender=now; 
+  } 
+}
 
 // ── OB PRESSURE & PLR (unchanged) ────────────────────────────────────────
 // ── v68: Whale Orders Table ───────────────────────────────────────────────
-
-// ── Aggression Sound Alert ───────────────────────────────────────────────────
-// Plays a short tone when buyer or seller aggression crosses 70% threshold.
+// ── Buyer/Seller Aggression Bar ─────────────────────────────────────────────
+// Real-time: reads the last 3s of deltaHistory for immediate response.
+// Volume intensity: bar opacity/saturation scales with recent trade volume.
+// Sound alert: triggered when aggression exceeds 70% threshold.
 let _aggrSoundCtx = null;
 let _aggrLastSound = 0;
 let _aggrLastSide  = '';
@@ -2310,65 +2386,88 @@ let _aggrLastSide  = '';
 function playAggrTone(isBuy) {
   const now = Date.now();
   const side = isBuy ? 'buy' : 'sell';
-  if (now - _aggrLastSound < 5000 && _aggrLastSide === side) return; // throttle 5s per side
-  _aggrLastSound = now;
-  _aggrLastSide  = side;
+  if (now - _aggrLastSound < 5000 && _aggrLastSide === side) return;
+  _aggrLastSound = now; _aggrLastSide = side;
   try {
     if (!_aggrSoundCtx) _aggrSoundCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const ctx = _aggrSoundCtx;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    const ctx = _aggrSoundCtx, osc = ctx.createOscillator(), gain = ctx.createGain();
     osc.connect(gain); gain.connect(ctx.destination);
     osc.type = 'sine';
-    // Buy = higher pitch ascending, Sell = lower pitch descending
     osc.frequency.setValueAtTime(isBuy ? 660 : 330, ctx.currentTime);
     osc.frequency.linearRampToValueAtTime(isBuy ? 880 : 220, ctx.currentTime + 0.12);
     gain.gain.setValueAtTime(0.18, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.25);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.25);
+    osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.25);
   } catch(e) {}
 }
-// ── Buyer/Seller Aggression Bar — independent of OBP settings ───────────────
-// Reads deltaHistory (live trade flow) over a rolling 60s window.
-// Buyer aggression = market buy trades (positive delta entries).
-// Seller aggression = market sell trades (negative delta entries).
 function renderAggressionBar() {
-  const aggrBuyBar   = document.getElementById('aggrBuyBar');
-  const aggrSellBar  = document.getElementById('aggrSellBar');
-  const aggrBuyLbl   = document.getElementById('aggrBuyLabel');
-  const aggrSellLbl  = document.getElementById('aggrSellLabel');
-  const aggrMom      = document.getElementById('aggrMomentum');
-  if (!aggrBuyBar) return;
+  const elBuy  = document.getElementById('aggrBuyBar');
+  const elSell = document.getElementById('aggrSellBar');
+  const elBuyL = document.getElementById('aggrBuyLabel');
+  const elSelL = document.getElementById('aggrSellLabel');
+  const elMom  = document.getElementById('aggrMomentum');
+  if (!elBuy) return;
 
-  const now  = Date.now();
-  const win60 = now - 60000;
+  const now = Date.now();
+  const win15 = now - 15000;
   const win5  = now -  5000;
+  const win30 = now - 30000;
 
-  let buy60 = 0, sell60 = 0, buy5 = 0, sell5 = 0;
+  let buy15 = 0, sell15 = 0, buy5 = 0, sell5 = 0, vol30 = 0;
+
   for (let i = deltaHistory.length - 1; i >= 0; i--) {
     const d = deltaHistory[i];
-    if (d.time < win60) break;
-    if (d.value > 0) { buy60  += d.value;  if (d.time >= win5) buy5  += d.value; }
-    else             { sell60 += Math.abs(d.value); if (d.time >= win5) sell5 += Math.abs(d.value); }
+    if (d.time < win30) break;
+    vol30 += Math.abs(d.value);
+    if (d.time >= win15) {
+      if (d.value > 0) buy15 += d.value;
+      else             sell15 += Math.abs(d.value);
+      if (d.time >= win5) {
+        if (d.value > 0) buy5 += d.value;
+        else             sell5 += Math.abs(d.value);
+      }
+    }
   }
 
-  const tot60 = buy60 + sell60 || 1;
-  const buyPct  = (buy60  / tot60 * 100);
-  const sellPct = (sell60 / tot60 * 100);
+  const tot15 = buy15 + sell15;
+  if (tot15 < 0.001) {
+    elMom.textContent = '— no recent trades —';
+    elMom.style.color = '#556';
+    elBuy.style.width  = '50%';
+    elSell.style.width = '50%';
+    elBuyL.textContent = 'BUY 50%';
+    elSelL.textContent = '50% SELL';
+    elBuy.style.background  = 'linear-gradient(90deg,#005522,#00cc66)';
+    elSell.style.background = 'linear-gradient(90deg,#cc2200,#661100)';
+    return;
+  }
 
-  aggrBuyBar.style.width  = buyPct.toFixed(1)  + '%';
-  aggrSellBar.style.width = sellPct.toFixed(1) + '%';
+  const buyPct  = (buy15 / tot15) * 100;
+  const sellPct = (sell15 / tot15) * 100;
+  const ratio   = buy15 / tot15;
 
-  aggrBuyLbl.textContent  = 'BUY '  + buyPct.toFixed(1)  + '%';
-  aggrSellLbl.textContent = sellPct.toFixed(1) + '% SELL';
+  const avgRate30 = vol30 / 30 + 0.001;
+  const avgRate15 = tot15 / 15;
+  const intensity = Math.min(1, Math.max(0.2, avgRate15 / avgRate30));
 
-  // Colour intensity based on dominance
-  const ratio = buy60 / tot60;
-  aggrBuyBar.style.opacity  = (0.5 + ratio * 0.5).toFixed(2);
-  aggrSellBar.style.opacity = (0.5 + (1 - ratio) * 0.5).toFixed(2);
+  elBuy.style.width  = buyPct.toFixed(1) + '%';
+  elSell.style.width = sellPct.toFixed(1) + '%';
 
-  // 5s momentum label
+  const alpha1 = (0.5 + intensity * 0.5).toFixed(2);
+  const alpha2 = (0.6 + intensity * 0.4).toFixed(2);
+
+  elBuy.style.background = `linear-gradient(90deg,
+    rgba(0, ${Math.round(100 + intensity*155)}, ${Math.round(50 + intensity*50)}, ${alpha1}),
+    rgba(0, ${Math.round(150 + intensity*105)}, ${Math.round(80 + intensity*22)}, ${alpha2})
+  )`;
+  elSell.style.background = `linear-gradient(90deg,
+    rgba(${Math.round(150 + intensity*105)}, ${Math.round(20 + intensity*10)}, 0, ${alpha1}),
+    rgba(${Math.round(100 + intensity*100)}, 0, 0, ${alpha2})
+  )`;
+
+  elBuyL.textContent = 'BUY '  + buyPct.toFixed(1) + '%';
+  elSelL.textContent = sellPct.toFixed(1) + '% SELL';
+
   const tot5 = buy5 + sell5;
   if (tot5 > 0) {
     const r5 = buy5 / tot5;
@@ -2376,17 +2475,16 @@ function renderAggressionBar() {
               : r5 < 0.35 ? '▼ Seller momentum'
               : '↔ Balanced';
     const col = r5 > 0.65 ? '#00cc66' : r5 < 0.35 ? '#cc4422' : '#7a8a9a';
-    aggrMom.textContent  = mom;
-    aggrMom.style.color  = col;
+    elMom.textContent  = mom;
+    elMom.style.color  = col;
   } else {
-    aggrMom.textContent = '— no recent trades —';
-    aggrMom.style.color = '#556';
+    elMom.textContent = '— momentum —';
+    elMom.style.color = '#556';
   }
-  // Sound alert on strong aggression
+
   if (ratio > 0.70) playAggrTone(true);
   else if (ratio < 0.30) playAggrTone(false);
 }
-
 function renderWhaleTable() {
   const tbody   = document.getElementById('whaleTableBody');
   const minLabel = document.getElementById('whaleTableMinVal');
@@ -2525,11 +2623,19 @@ function renderCVD() {
   ctx.beginPath(); ctx.moveTo(0, ZERO_Y); ctx.lineTo(W, ZERO_Y); ctx.stroke();
   if (!bars.length) return;
 
-  // 95th-pct maxDelta — one outlier won't flatten everything else
-  const deltas = bars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
-  const maxDelta = deltas.length
-    ? (deltas[Math.floor(deltas.length * 0.95)] || deltas[deltas.length - 1])
+  // Compute maxDelta from CLOSED bars only (exclude live bar).
+  // If we include the live bar, its partial volume shrinks norm for all bars
+  // and the live bar height never reflects real-time volume growth.
+  const _liveStart = currentCandle ? currentCandle.startTime : -1;
+  const closedBars = bars.filter(c => c.startTime !== _liveStart);
+  const _deltas = closedBars.map(c => Math.abs(c.buyVol - c.sellVol)).filter(v => v > 0).sort((a, b) => a - b);
+  // 95th-pct of closed bars so one spike doesn't squash the rest
+  const maxDelta = _deltas.length
+    ? (_deltas[Math.floor(_deltas.length * 0.95)] || _deltas[_deltas.length - 1])
     : 1;
+// For the live bar, use a scale that is at least 10% of maxDelta,
+// so it's not dwarfed by old spikes.
+  const liveMax = Math.max(1, maxDelta * 0.1);
 
   cvdBarMap = [];
   let periodDelta1h = 0;
@@ -2547,19 +2653,20 @@ function renderCVD() {
       buy: candle.buyVol, sell: candle.sellVol,
       time: candle.startTime, price: candle.close || 0 });
 
-    const isLiveBar = i === bars.length - 1 && currentCandle && candle.startTime === currentCandle.startTime;
+    // isLive: rightmost bar = current open candle
+    const isLive = (i === bars.length - 1) &&
+      currentCandle && candle.startTime === currentCandle.startTime;
+    // Use separate scale for live bar
+    const scale = isLive ? liveMax : maxDelta;
     const norm = Math.abs(delta) / maxDelta;
-    // Show at least 2px stub for live bar so it's visible even with zero volume
-    const barH = norm < 0.001
-      ? (isLiveBar ? 2 : 0)
-      : Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
+    const barH = Math.min(ZERO_Y - 2, Math.max(2, Math.round(norm * (ZERO_Y - 4))));
 
-    // Live bar pulses with slightly brighter colour so it's identifiable
-    const bullCol = isLiveBar ? 'rgba(0,255,130,0.95)' : 'rgba(0,210,110,0.88)';
-    const bearCol = isLiveBar ? 'rgba(255,80,80,0.95)'  : 'rgba(210,55,55,0.88)';
-    ctx.fillStyle = delta >= 0 ? bullCol : bearCol;
-    if (delta >= 0) ctx.fillRect(x, ZERO_Y - barH, BAR_W - 1, barH);
-    else            ctx.fillRect(x, ZERO_Y,         BAR_W - 1, Math.max(barH, isLiveBar ? 2 : 0));
+    // Live bar is brighter so it's clearly identifiable
+    ctx.fillStyle = delta >= 0
+      ? (isLive ? 'rgba(0,255,140,0.95)' : 'rgba(0,210,110,0.88)')
+      : (isLive ? 'rgba(255,80,80,0.95)'  : 'rgba(210,55,55,0.88)');
+    if (delta >= 0) ctx.fillRect(x, ZERO_Y - Math.max(barH, isLive?2:0), BAR_W - 1, Math.max(barH, isLive?2:0));
+    else            ctx.fillRect(x, ZERO_Y, BAR_W - 1, Math.max(barH, isLive?2:0));
 
     if (barH >= 10 && BAR_W >= 14) {
       const abs   = Math.abs(delta);
@@ -2598,17 +2705,6 @@ function renderCVD() {
     }
   });
 
-  // Cumulative CVD overlay line
-  if (bars.length > 1) {
-    let cum = 0;
-    const pts = bars.map((c,i)=>{ cum+=c.buyVol-c.sellVol; return {x:i*BAR_W+(BAR_W-1)/2,v:cum}; });
-    const lo=Math.min(...pts.map(p=>p.v)), hi=Math.max(...pts.map(p=>p.v)), rng=hi-lo||1;
-    const yT=6, yB=H-24;
-    ctx.save(); ctx.strokeStyle="rgba(255,210,60,0.80)"; ctx.lineWidth=1.5; ctx.lineJoin="round";
-    ctx.beginPath();
-    pts.forEach((p,i)=>{ const y=yB-((p.v-lo)/rng)*(yB-yT); i===0?ctx.moveTo(p.x,y):ctx.lineTo(p.x,y); });
-    ctx.stroke(); ctx.restore();
-  }
   if (bars.length > 1) {
     let cum=0; const pts=bars.map((c,i)=>{ cum+=c.buyVol-c.sellVol; return {x:i*BAR_W+(BAR_W-1)/2,v:cum}; });
     const lo=Math.min(...pts.map(p=>p.v)),hi=Math.max(...pts.map(p=>p.v)),rng=hi-lo||1;
@@ -2620,6 +2716,381 @@ function renderCVD() {
   cvdContainer.scrollLeft = 0;
 }
 
+// ── VOLUME PROFILE ───────────────────────────────────────────────────────
+// Fetches the last-24h buy/sell volume-by-price levels from the
+// get_volume_profile RPC and stores them in volumeProfileData.
+let vpBarMap = []; // [{y, rowH, price, buy, sell, total}, ...] for hover hit-testing
+async function fetchVolumeProfile() {
+  try {
+    const resp = await fetch(
+      `${SUPABASE_URL}/rpc/get_volume_profile`,
+      { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }
+    );
+    if (!resp.ok) throw new Error(`get_volume_profile HTTP ${resp.status}`);
+    const rows = await resp.json();
+    volumeProfileData = Array.isArray(rows) ? rows : [];
+    renderVolumeProfile();
+  } catch (err) {
+    console.warn('[VolumeProfile] fetchVolumeProfile failed:', err);
+  }
+}
+
+function resizeVolumeProfileCanvas() {
+  const AXIS_W = 58;
+  const rowEl = volumeProfileCanvas.parentElement; // #volumeProfileCanvasRow
+  const availW = (rowEl ? rowEl.clientWidth : 800) - AXIS_W;
+  const w = Math.max(200, Math.round(availW));
+  if (volumeProfileCanvas.width !== w) volumeProfileCanvas.width = w;
+  volumeProfileCanvas.height = 220;
+  vpPriceAxisCanvas.width  = AXIS_W;
+  vpPriceAxisCanvas.height = 220;
+}
+
+
+// v86: cluster the currently-visible price levels together once their
+// on-screen spacing would drop below a legible pixel target — same idea
+// as the bookmap's dynamic bmClusterSize. Because this now runs on the
+// zoomed/windowed subset (not the full 24h dataset), it tracks the real
+// zoom: dragging out widens the window *and* merges levels together,
+// dragging in narrows the window *and* un-merges back to individual bars.
+function clusterVpRows(rows, yScale) {
+  if (rows.length < 2) {
+    return rows.map(r => ({ price: r.price, buy_vol: r.buy_vol || 0, sell_vol: r.sell_vol || 0, count: 1 }));
+  }
+  const rawSpan = (rows[0].price - rows[rows.length - 1].price) || (tickSize || 1);
+  const rawStep = rawSpan / (rows.length - 1) || (tickSize || 1);
+  const TARGET_ROW_PX = 8;
+  const effectiveRawPx = Math.max(0.001, rawStep * yScale);
+  const clusterSize = Math.max(1, Math.min(rows.length, Math.round(TARGET_ROW_PX / effectiveRawPx)));
+
+  if (clusterSize <= 1) {
+    return rows.map(r => ({ price: r.price, buy_vol: r.buy_vol || 0, sell_vol: r.sell_vol || 0, count: 1 }));
+  }
+  const out = [];
+  for (let i = 0; i < rows.length; i += clusterSize) {
+    const chunk = rows.slice(i, i + clusterSize);
+    let buy = 0, sell = 0, priceSum = 0;
+    for (const r of chunk) { buy += r.buy_vol || 0; sell += r.sell_vol || 0; priceSum += r.price; }
+    out.push({ price: priceSum / chunk.length, buy_vol: buy, sell_vol: sell, count: chunk.length });
+  }
+  return out;
+}
+
+// v81/v83/v86: real volume-profile rendering — left side = total volume
+// (stacked buy/sell), right side = net delta only, POC highlight + Value
+// Area High/Low boundary lines, bookmap-style alternating price-row
+// background for easy visual alignment with the price axis, laid out like
+// the bookmap/candlestick canvas-row (plot canvas + dedicated price-axis
+// canvas). Levels cluster together while zoomed out and split back into
+// individual bars while zoomed in.
+function renderVolumeProfile() {
+  resizeVolumeProfileCanvas();
+  const ctx = volumeProfileCtx, axisCtx = vpPriceAxisCtx;
+  const W = volumeProfileCanvas.width, H = volumeProfileCanvas.height;
+  const AW = vpPriceAxisCanvas.width;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#0a0e14';
+  ctx.fillRect(0, 0, W, H);
+  axisCtx.clearRect(0, 0, AW, H);
+  axisCtx.fillStyle = '#0d111a';
+  axisCtx.fillRect(0, 0, AW, H);
+  axisCtx.strokeStyle = '#2a3a4a';
+  axisCtx.lineWidth = 1;
+  axisCtx.beginPath(); axisCtx.moveTo(0, 0); axisCtx.lineTo(0, H); axisCtx.stroke();
+
+  vpBarMap = [];
+  if (!vpShowProfile || !volumeProfileData.length) return;
+
+  const allRows = volumeProfileData; // full 24h dataset, sorted price descending
+  const rawHigh = allRows[0].price, rawLow = allRows[allRows.length - 1].price;
+  const rawSpan = (rawHigh - rawLow) || (tickSize || 1);
+
+  // Drag-to-zoom on the price axis, same "windowed price range" convention
+  // as the bookmap's depth-drag: vertical drag exponentially shrinks/grows
+  // the visible half-span around the range's centre. Down = zoom out
+  // (wider window, more levels compressed together), up = zoom in
+  // (narrower window, fewer levels spread across the full panel height).
+  if (!vpPriceRange) vpPriceRange = rawSpan / 2 * 1.05; // first render: fit the whole 24h range
+  const center = (vpCenterPrice != null) ? vpCenterPrice : (rawHigh + rawLow) / 2;
+  const half = vpPriceRange;
+  const high = center + half, low = center - half;
+  const priceSpan = (high - low) || 1;
+  vpMinPrice = low; vpMaxPrice = high;
+
+  const visibleRaw = allRows.filter(r => r.price >= low && r.price <= high);
+
+  const PAD_TOP = 14, PAD_BOTTOM = 4;
+  const plotH = H - PAD_TOP - PAD_BOTTOM;
+  const yScale = plotH / priceSpan;
+  const priceToY = p => PAD_TOP + (high - p) * yScale;
+  vpRenderHigh = high; vpRenderPadTop = PAD_TOP; vpRenderYScale = yScale;
+
+  if (!visibleRaw.length) {
+    axisCtx.fillStyle = '#5a7a9a';
+    axisCtx.font = '9px monospace';
+    ctx.fillStyle = '#5a7a9a';
+    ctx.font = '10px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('No levels in this price range', W / 2, H / 2);
+    return;
+  }
+
+  // Cluster the visible levels once their on-screen spacing gets too thin —
+  // this is what makes zooming out feel legible instead of overlapping.
+  const rows = clusterVpRows(visibleRaw, yScale);
+
+  const totalVols   = rows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
+  const deltas      = rows.map(r => (r.buy_vol || 0) - (r.sell_vol || 0));
+  const maxTotalVol = Math.max(1, ...totalVols);
+  const maxAbsDelta = Math.max(1, ...deltas.map(d => Math.abs(d)));
+  const grandTotal  = totalVols.reduce((a, b) => a + b, 0) || 1;
+
+  // Point of Control (highest-volume price level) + 70% value area,
+  // the two hallmarks of a real volume-profile read — computed over the
+  // currently visible (zoomed) window, so they stay meaningful as you zoom.
+  let pocIdx = 0;
+  for (let i = 1; i < rows.length; i++) if (totalVols[i] > totalVols[pocIdx]) pocIdx = i;
+  const byVolDesc = rows.map((_, i) => i).sort((a, b) => totalVols[b] - totalVols[a]);
+  const valueAreaSet = new Set();
+  let acc = 0;
+  for (const i of byVolDesc) {
+    valueAreaSet.add(i);
+    acc += totalVols[i];
+    if (acc >= grandTotal * 0.70) break;
+  }
+  // Value Area High / Low — the price bounds of the value-area rows.
+  // Drawn as boundary lines instead of shading every row, so the bars
+  // underneath stay fully legible.
+  let vahPrice = -Infinity, valPrice = Infinity;
+  valueAreaSet.forEach(i => {
+    if (rows[i].price > vahPrice) vahPrice = rows[i].price;
+    if (rows[i].price < valPrice) valPrice = rows[i].price;
+  });
+
+  const zeroX = Math.floor(W / 2);
+  const PAD_SIDE = 8;
+  const maxBarWidth = Math.floor(W / 2) - PAD_SIDE;
+  const rowH = rows.length > 1 ? Math.max(1, plotH / rows.length) : plotH;
+  const barH = Math.max(2, Math.min(rowH - 1, 10));
+  const MIN_BAR_PX = 2; // keeps small-but-nonzero levels from disappearing entirely
+
+  // ── Bookmap-style alternating price-row background, so the profile
+  // lines up visually with the price axis just like the bookmap does ────
+  rows.forEach((r, i) => {
+    const y = priceToY(r.price);
+    if (i % 2 === 0) { ctx.fillStyle = '#11161e'; ctx.fillRect(0, y - rowH / 2, W, rowH); }
+    ctx.strokeStyle = 'rgba(42,58,74,0.35)'; ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(0, y - rowH / 2); ctx.lineTo(W, y - rowH / 2); ctx.stroke();
+  });
+
+  // Side captions
+  ctx.font = 'bold 8px monospace';
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#5a7a9a';
+  ctx.fillText('\u25C0 VOLUME (buy/sell)', 4, 10);
+  ctx.textAlign = 'right';
+  ctx.fillText('DELTA \u25B6', W - 4, 10);
+
+  // Zero / centre line
+  ctx.strokeStyle = '#3a5a7a';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(zeroX, PAD_TOP - 6); ctx.lineTo(zeroX, H); ctx.stroke();
+
+  rows.forEach((r, i) => {
+    const y = priceToY(r.price);
+    const buy = r.buy_vol || 0, sell = r.sell_vol || 0, total = buy + sell;
+    const delta = buy - sell;
+    const isPOC = i === pocIdx;
+
+    vpBarMap.push({ y, rowH, price: r.price, buy, sell, total, delta, count: r.count || 1 });
+
+    // POC rows get a soft glow so the busiest level pops against the
+    // alternating background instead of just being a slightly brighter fill.
+    ctx.save();
+    if (isPOC) { ctx.shadowColor = 'rgba(255,210,60,0.55)'; ctx.shadowBlur = 5; }
+
+    // ── LEFT: total volume, stacked buy (inner) + sell (outer) ─────────
+    let volBarW = Math.round((total / maxTotalVol) * maxBarWidth);
+    if (total > 0) volBarW = Math.max(MIN_BAR_PX, volBarW);
+    const buyW  = total > 0 ? Math.max(buy  > 0 ? 1 : 0, Math.round(volBarW * (buy  / total))) : 0;
+    const sellW = total > 0 ? Math.max(0, volBarW - buyW) : 0;
+    if (buyW > 0) {
+      ctx.fillStyle = isPOC ? '#00ffb4' : '#00d67e';
+      ctx.fillRect(zeroX - buyW, y - barH / 2, buyW, barH);
+    }
+    if (sellW > 0) {
+      ctx.fillStyle = isPOC ? '#ff6a6a' : '#e8453f';
+      ctx.fillRect(zeroX - buyW - sellW, y - barH / 2, sellW, barH);
+    }
+    if (volBarW > 0) {
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = 1;
+      ctx.strokeRect(zeroX - volBarW + 0.5, y - barH / 2 + 0.5, volBarW - 1, barH - 1);
+      if (isPOC) { ctx.shadowColor = 'rgba(255,210,60,0.55)'; ctx.shadowBlur = 5; }
+    }
+
+    // ── RIGHT: net delta only, single colour by sign ───────────────────
+    let deltaW = Math.round((Math.abs(delta) / maxAbsDelta) * maxBarWidth);
+    if (Math.abs(delta) > 0) deltaW = Math.max(MIN_BAR_PX, deltaW);
+    if (deltaW > 0) {
+      ctx.fillStyle = delta >= 0
+        ? (isPOC ? '#00ffb4' : '#00d67e')
+        : (isPOC ? '#ff6a6a' : '#e8453f');
+      ctx.fillRect(zeroX, y - barH / 2, deltaW, barH);
+      ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
+      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = 1;
+      ctx.strokeRect(zeroX + 0.5, y - barH / 2 + 0.5, deltaW - 1, barH - 1);
+    }
+    ctx.restore();
+
+    if (isPOC) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,210,60,0.9)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([2, 2]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+  });
+
+  // Value Area High / Low boundary lines
+  [vahPrice, valPrice].forEach(p => {
+    if (!isFinite(p)) return;
+    const y = priceToY(p);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(140,170,255,0.55)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([5, 3]);
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  });
+
+  // ── Dedicated price axis, same tick logic/style as renderPriceAxis ────
+  const rawStep = priceSpan / 8;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawStep || 1)));
+  const niceMultiples = [1, 2, 2.5, 5, 10];
+  let labelStep = magnitude;
+  for (const m of niceMultiples) { const c = magnitude * m; if (c >= rawStep) { labelStep = c; break; } }
+
+  axisCtx.font = '9px monospace';
+  axisCtx.textBaseline = 'alphabetic';
+  const labelStart = Math.ceil(low / labelStep) * labelStep;
+  for (let p = labelStart; p <= high; p += labelStep) {
+    const y = priceToY(p);
+    if (y < 8 || y > H - 4) continue;
+    axisCtx.strokeStyle = '#3a5a7a';
+    axisCtx.lineWidth = 1;
+    axisCtx.beginPath(); axisCtx.moveTo(0, y); axisCtx.lineTo(6, y); axisCtx.stroke();
+    axisCtx.fillStyle = '#8aaabb';
+    axisCtx.textAlign = 'left';
+    axisCtx.fillText(p.toFixed(tickDecimals), 8, y + 3);
+  }
+
+  // VAH / VAL labels
+  [{ p: vahPrice, tag: 'VAH' }, { p: valPrice, tag: 'VAL' }].forEach(({ p, tag }) => {
+    if (!isFinite(p)) return;
+    const y = priceToY(p);
+    if (y < 8 || y > H - 4) return;
+    axisCtx.fillStyle = 'rgba(140,170,255,0.9)';
+    axisCtx.font = '7px monospace';
+    axisCtx.textAlign = 'right';
+    axisCtx.fillText(tag, AW - 3, y - 3);
+  });
+
+  // POC label, pinned on the axis so it's never lost among regular ticks
+  const pocY = priceToY(rows[pocIdx].price);
+  if (pocY >= 0 && pocY <= H) {
+    axisCtx.fillStyle = '#1a1a10';
+    axisCtx.fillRect(0, pocY - 6, AW, 12);
+    axisCtx.fillStyle = '#ffd23c';
+    axisCtx.font = 'bold 9px monospace';
+    axisCtx.textAlign = 'left';
+    axisCtx.fillText(rows[pocIdx].price.toFixed(tickDecimals), 8, pocY + 3);
+  }
+}
+
+// Hover tooltip — mirrors the CVD histogram's hover pattern
+volumeProfileCanvas.addEventListener('mousemove', e => {
+  if (vpZoomDragging) { volumeProfileTooltip.style.display = 'none'; return; }
+  const rect = volumeProfileCanvas.getBoundingClientRect();
+  const mouseY = e.clientY - rect.top;
+  const hit = vpBarMap.find(b => mouseY >= b.y - b.rowH / 2 && mouseY < b.y + b.rowH / 2);
+  if (hit) {
+    const bd = (hit.buy - hit.sell).toFixed(2);
+    volumeProfileTooltip.style.display = 'block';
+    const _ttw = volumeProfileTooltip.offsetWidth || 160;
+    volumeProfileTooltip.style.left = Math.max(0, e.clientX - _ttw - 12) + 'px';
+    volumeProfileTooltip.style.top  = (e.clientY - 20) + 'px';
+    volumeProfileTooltip.innerHTML = hit.price.toFixed(tickDecimals) +
+      (hit.count > 1 ? " <span style='color:#5a7a9a'>(" + hit.count + " lvls)</span>" : "") +
+      " &nbsp;|&nbsp;<span style='color:#00ff88'>B:" + hit.buy.toFixed(2) + "</span> " +
+      "<span style='color:#ff4d4d'>S:" + hit.sell.toFixed(2) + "</span> " +
+      "<span style='color:" + (+bd >= 0 ? "#00ff88" : "#ff4d4d") + "'>\u0394" + bd + "</span>";
+  } else {
+    volumeProfileTooltip.style.display = 'none';
+  }
+});
+volumeProfileCanvas.addEventListener('mouseleave', () => { volumeProfileTooltip.style.display = 'none'; });
+
+// Drag-to-zoom anywhere in the VP panel (main plot area or the price
+// axis) — same exponential windowed-range convention as the bookmap's
+// depth-drag: down = zoom out (wider visible range), up = zoom in
+// (narrower visible range). The price under the cursor at drag-start
+// becomes the new zoom centre, so you can zoom in on any region, not just
+// whatever happened to be in the middle.
+function vpStartZoomDrag(e, targetEl) {
+  if (!volumeProfileData.length) return;
+  const rect = targetEl.getBoundingClientRect();
+  const my = e.clientY - rect.top;
+  const clickedPrice = vpRenderHigh - (my - vpRenderPadTop) / vpRenderYScale;
+  if (isFinite(clickedPrice)) vpCenterPrice = clickedPrice;
+
+  vpZoomDragging = true;
+  vpZoomDragStartY = e.clientY;
+  const rawHigh = volumeProfileData[0].price, rawLow = volumeProfileData[volumeProfileData.length - 1].price;
+  vpZoomDragStartRange = vpPriceRange || ((rawHigh - rawLow) / 2 * 1.05) || (tickSize || 1);
+  volumeProfileCanvas.style.cursor = 'ns-resize';
+  vpPriceAxisCanvas.style.cursor = 'ns-resize';
+  dragHint.style.display = 'block';
+  e.preventDefault();
+  renderVolumeProfile();
+}
+vpPriceAxisCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, vpPriceAxisCanvas));
+volumeProfileCanvas.addEventListener('mousedown', (e) => vpStartZoomDrag(e, volumeProfileCanvas));
+window.addEventListener('mousemove', (e) => {
+  if (!vpZoomDragging) return;
+  const dy = e.clientY - vpZoomDragStartY;
+  const rawHigh = volumeProfileData[0].price, rawLow = volumeProfileData[volumeProfileData.length - 1].price;
+  const rawSpan = (rawHigh - rawLow) || (tickSize || 1);
+  const minRange = Math.max(tickSize * 3, rawSpan * 0.01);
+  const maxRange = rawSpan * 4;
+  vpPriceRange = Math.max(minRange, Math.min(maxRange, vpZoomDragStartRange * Math.exp(dy * 0.006)));
+  dragHint.style.left = (e.clientX + 16) + 'px';
+  dragHint.style.top  = (e.clientY - 34) + 'px';
+  dragHint.innerHTML = `&#x2195; VP Range: \u00B1${vpPriceRange.toFixed(tickDecimals)} @ ${(vpCenterPrice || 0).toFixed(tickDecimals)}`;
+  renderVolumeProfile();
+});
+window.addEventListener('mouseup', () => {
+  if (vpZoomDragging) {
+    vpZoomDragging = false;
+    volumeProfileCanvas.style.cursor = 'crosshair';
+    vpPriceAxisCanvas.style.cursor = 'ns-resize';
+    dragHint.style.display = 'none';
+  }
+});
+
+function applyVpShowProfile() {
+  vpShowProfile = vpShowProfileToggle.checked;
+  renderVolumeProfile();
+}
+vpShowProfileToggle.onchange = applyVpShowProfile;
+
+window.addEventListener('resize', () => { if (vpShowProfile) renderVolumeProfile(); });
+
 // WebSockets (unchanged)
 let depthReconnectCount=0, tradesReconnectCount=0;
 function setStreamStatus(el,ok,label){ el.style.background=ok?"#1a3a1a":"#3a1a1a"; el.style.color=ok?"#00ff88":"#ff4d4d"; el.innerText="\u25CF "+label+": "+(ok?"OK":"Reconnecting..."); const allDown=depthStatus.innerText.includes("Reconnecting")&&tradesStatus.innerText.includes("Reconnecting"); connectionAlert.innerText="\u274C All streams down"; connectionAlert.style.display=allDown?"block":"none"; }
@@ -2628,7 +3099,7 @@ function connectTrades(){ const ws=new WebSocket("wss://stream.binance.com:9443/
 
 // Settings (v53 includes new controls and panel states)
 saveBtn.onclick=()=>{
-  const panelIds = ['deltaPanel','signalPanelWrap','obPressureWrap','bookmapBlock','candlestickBlock','candleLogBlock','cvdWrap'];
+  const panelIds = ['deltaPanel','signalPanelWrap','obPressureWrap','bookmapBlock','candlestickBlock','candleLogBlock','cvdWrap','volumeProfileWrap'];
   const panelStates = {};
   panelIds.forEach(id => {
     const body = document.getElementById(id + '-body');
@@ -2653,6 +3124,7 @@ saveBtn.onclick=()=>{
     fpLightMode,
     fpClusterOverlay,
     showWhaleTable,
+    vpShowProfile: vpShowProfileToggle.checked,
     panelStates
   }));
 };
@@ -2689,6 +3161,7 @@ loadBtn.onclick=()=>{ const s=JSON.parse(localStorage.getItem("domSettings")||"{
   if(s.fpLightMode !== undefined) { fpLightMode = s.fpLightMode; applyFpBgMode(); }
   if(s.fpClusterOverlay !== undefined) { fpClusterOverlay = s.fpClusterOverlay; applyFpClusterMode(); }
   if(s.showWhaleTable   !== undefined) { showWhaleTable   = s.showWhaleTable;   applyWhaleTableMode(); }
+  if(s.vpShowProfile    !== undefined) { vpShowProfileToggle.checked = s.vpShowProfile; applyVpShowProfile(); }
   if(s.taControlsOpen !== undefined) {
     const ctrl = document.getElementById('taControls');
     const arrow = document.getElementById('taControlsArrow');
@@ -4675,6 +5148,9 @@ async function bootstrap() {
   setHistProgress(5, 'Connecting order book…');
   seedOrderBook();
   connectDepth();
+
+  // ── Phase 2b: volume profile (24h buy/sell-by-price) ─────────────────
+  fetchVolumeProfile();
   
     // ── Phase 4: fetch pre-aggregated candles from Aiven RPC ──────────
     let candleRows = [];
@@ -4743,15 +5219,10 @@ async function bootstrap() {
     setInterval(() => { updateFpLogTimer(); }, 250);
     (function cvdProg(){
       const pb=document.getElementById("cvdProgressBar");
-      function t(){ if(pb){ const ms=candleIntervalMin*60000; pb.style.width=((Date.now()%ms)/ms*100).toFixed(1)+"%"; } requestAnimationFrame(t); } t();
-    })();
-
-    (function cvdProgress(){
-      const pb=document.getElementById("cvdProgressBar");
-      function tick(){
+      function t(){
         if(pb){ const ms=candleIntervalMin*60000; pb.style.width=((Date.now()%ms)/ms*100).toFixed(1)+"%"; }
-        requestAnimationFrame(tick);
-      } tick();
+        requestAnimationFrame(t);
+      } t();
     })();
 
   }, 1000);
