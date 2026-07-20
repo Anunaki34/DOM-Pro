@@ -970,10 +970,11 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
 <div id="cvdWrap">
   <div class="panel-toggle-bar" style="cursor:pointer;" onclick="togglePanel('cvdWrap')">
     <span>&#9670; CVD Histogram</span>
-    <span style="display:flex; align-items:center; gap:8px;">
+    <span style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
       <label style="cursor:pointer; display:flex; align-items:center; gap:3px;" onclick="event.stopPropagation()">
         <span style="font-size:9px;color:#445;font-family:monospace;margin-left:4px;">next bar</span><div style="display:inline-block;vertical-align:middle;width:56px;height:4px;background:#1a2233;border-radius:2px;margin-left:5px;overflow:hidden;"><div id="cvdProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,#003366,#0077cc);border-radius:2px;"></div></div>
       </label>
+      <button id="cvdRefreshBtn" title="Re-fetch recent candles and rebuild the CVD bars from the server (fixes any local drift)" onclick="event.stopPropagation(); hardRefreshCVD();" style="font-size:9px;font-family:monospace;background:#1a2233;color:#8aaabb;border:1px solid #2a3a4a;border-radius:3px;padding:2px 6px;cursor:pointer;">&#8635; Refresh</button>
       <span class="ptb-arrow">&#9660;</span>
     </span>
   </div>
@@ -995,6 +996,7 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
       <label style="cursor:pointer; display:flex; align-items:center; gap:3px; font-size:9px; color:#8aaabb; font-family:monospace;" onclick="event.stopPropagation()">
         <input type="checkbox" id="vpShowProfileToggle" checked style="cursor:pointer;"> Show Profile
       </label>
+      <button id="vpRecenterBtn" title="Jump the view back to the current price" onclick="event.stopPropagation(); vpRecenter();" style="font-size:9px;font-family:monospace;background:#1a2233;color:#8aaabb;border:1px solid #2a3a4a;border-radius:3px;padding:2px 6px;cursor:pointer;">&#8982; Center</button>
       <button id="vpRefreshBtn" onclick="event.stopPropagation(); fetchVolumeProfile();" style="font-size:9px;font-family:monospace;background:#1a2233;color:#8aaabb;border:1px solid #2a3a4a;border-radius:3px;padding:2px 6px;cursor:pointer;">&#8635; Refresh</button>
       <span class="ptb-arrow">&#9660;</span>
     </span>
@@ -2743,6 +2745,59 @@ let cvdBarMap=[], cvdUserScrolled=false, cvdLastRenderedCount=0;
 cvdContainer.addEventListener("scroll",()=>{ cvdUserScrolled = !(cvdContainer.scrollLeft+cvdContainer.clientWidth>=cvdCanvas.width-20); });
 cvdContainer.addEventListener("mousemove",e=>{ const rect=cvdCanvas.getBoundingClientRect(),mouseX=e.clientX-rect.left; const hit=cvdBarMap.find(b=>mouseX>=b.x&&mouseX<b.x+b.w); if(hit){ const bd=(hit.buy-hit.sell).toFixed(2),t=new Date(hit.time), ts=t.getHours().toString().padStart(2,"0")+":"+t.getMinutes().toString().padStart(2,"0"); cvdTooltip.style.display="block"; const _ttw=cvdTooltip.offsetWidth||180; cvdTooltip.style.left=Math.max(0,e.clientX-_ttw-12)+"px"; cvdTooltip.style.top=(e.clientY-28)+"px"; cvdTooltip.innerHTML=ts+" &nbsp;|&nbsp;<span style='color:#00ff88'>B:"+hit.buy.toFixed(2)+"</span> <span style='color:#ff4d4d'>S:"+hit.sell.toFixed(2)+"</span> <span style='color:"+(+bd>=0?"#00ff88":"#ff4d4d")+"'>Δ"+bd+"</span>"; }else cvdTooltip.style.display="none";});
 cvdContainer.addEventListener("mouseleave",()=>cvdTooltip.style.display="none");
+// v90: CVD "hard refresh" — re-fetch the recent window from get_candles and
+// REPLACE any already-closed candle with the fresh server copy. Plain
+// seedHistoricalCandles() skips any candle whose startTime already exists
+// locally (`!candles.some(...)`), which is exactly why a refresh looked
+// like it did nothing: the most-recently-closed candle (the one most
+// likely to have drifted from local WS accumulation) already existed
+// locally and was silently skipped instead of rebuilt.
+let cvdHardRefreshInFlight = false;
+async function hardRefreshCVD() {
+  if (cvdHardRefreshInFlight) return;
+  cvdHardRefreshInFlight = true;
+  const btn = document.getElementById('cvdRefreshBtn');
+  if (btn) btn.style.opacity = '0.5';
+  try {
+    const nowMs = Date.now();
+    const lookbackMs = candleIntervalMin * 60000 * 60; // ~60 candles back — plenty to cover the CVD's 48-bar window
+    const ts = tickSize || 0.1;
+    const rows = await fetchCandles(nowMs - lookbackMs, nowMs, candleIntervalMin, ts);
+    const liveBoundary = Math.floor(nowMs / (candleIntervalMin * 60000)) * (candleIntervalMin * 60000);
+    let replaced = 0, added = 0;
+    for (const row of rows) {
+      const startTime = new Date(row.candle_time).getTime();
+      if (startTime >= liveBoundary) continue; // leave the live/forming candle to the WS feed
+      const levels = row.levels || [];
+      const trades = [];
+      for (const lv of levels) {
+        const p = parseFloat(lv.price), b = parseFloat(lv.buy) || 0, s = parseFloat(lv.sell) || 0;
+        if (b > 0) trades.push({ price: p, size: b, isSell: false });
+        if (s > 0) trades.push({ price: p, size: s, isSell: true });
+      }
+      const fresh = {
+        startTime,
+        open: parseFloat(row.open), high: parseFloat(row.high), low: parseFloat(row.low), close: parseFloat(row.close),
+        volume: parseFloat(row.volume), buyVol: parseFloat(row.buy_vol), sellVol: parseFloat(row.sell_vol),
+        trades
+      };
+      const idx = candles.findIndex(c => c.startTime === startTime);
+      if (idx >= 0) { candles[idx] = fresh; replaced++; }
+      else { candles.push(fresh); added++; }
+    }
+    if (added) candles.sort((a, b) => a.startTime - b.startTime);
+    if (candles.length > 500) candles.splice(0, candles.length - 500);
+    renderCVD();
+    if (typeof renderCandles === 'function') renderCandles();
+    console.log(`[CVD] Hard refresh: ${replaced} candle(s) rebuilt, ${added} added`);
+  } catch (err) {
+    console.warn('[CVD] hardRefreshCVD failed:', err);
+  } finally {
+    cvdHardRefreshInFlight = false;
+    if (btn) btn.style.opacity = '1';
+  }
+}
+
 function renderCVD() {
   // Build CVD directly from candles[] + currentCandle every render frame.
   // No separate accumulation — candles[] is the ground truth from RPC + live WS.
@@ -2920,6 +2975,13 @@ function renderCVD() {
 let vpBarMap = []; // [{y, rowH, price, buy, sell, total}, ...] for hover hit-testing
 let vpFetchInFlight = false, vpLastFetchedAt = 0;
 const VP_AUTO_REFRESH_MS = 20000; // v88: periodic auto-refetch, was manual-only before
+// v91: growth glow — remember each level's total volume from the previous
+// fetch so we can tell which levels grew, and flash those on the next
+// render pass instead of silently swapping the data underneath you.
+let vpPrevTotals = new Map();   // price-key -> total volume, as of the previous fetch
+let vpGrowGlow   = new Map();   // price-key -> timestamp when growth was last detected
+const VP_GLOW_DURATION_MS = 1600;
+let vpGlowAnimTimer = null;
 async function fetchVolumeProfile() {
   if (vpFetchInFlight) return; // don't stack overlapping requests if one's slow
   vpFetchInFlight = true;
@@ -2933,9 +2995,44 @@ async function fetchVolumeProfile() {
     if (!resp.ok) throw new Error(`get_volume_profile HTTP ${resp.status}`);
     const rows = await resp.json();
     volumeProfileData = Array.isArray(rows) ? rows : [];
+
+    // Detect which levels grew vs. the previous fetch, for the glow effect.
+    const now = Date.now();
+    const newTotals = new Map();
+    let anyGrowth = false;
+    for (const r of volumeProfileData) {
+      const key = r.price.toFixed(tickDecimals);
+      const total = (r.buy_vol || 0) + (r.sell_vol || 0);
+      newTotals.set(key, total);
+      const prevTotal = vpPrevTotals.get(key);
+      if (prevTotal !== undefined && total > prevTotal + 1e-9) {
+        vpGrowGlow.set(key, now);
+        anyGrowth = true;
+      }
+    }
+    vpPrevTotals = newTotals;
+
+    // v91: auto-return the view to the current price on every refresh,
+    // unless the person is actively mid-drag exploring somewhere else —
+    // dragging still works to look at highs/lows, it just doesn't "stick"
+    // past the next refresh.
+    if (!vpZoomDragging) vpCenterPrice = null;
+
     vpLastFetchedAt = Date.now();
     updateVpLastFetchedLabel();
     renderVolumeProfile();
+
+    // Animate the glow fade-out with a few extra render passes, then stop —
+    // cheaper than keeping VP in the continuous 250ms render loop.
+    if (anyGrowth) {
+      if (vpGlowAnimTimer) clearInterval(vpGlowAnimTimer);
+      let ticks = 0;
+      vpGlowAnimTimer = setInterval(() => {
+        renderVolumeProfile();
+        ticks++;
+        if (ticks * 150 > VP_GLOW_DURATION_MS) { clearInterval(vpGlowAnimTimer); vpGlowAnimTimer = null; }
+      }, 150);
+    }
   } catch (err) {
     console.warn('[VolumeProfile] fetchVolumeProfile failed:', err);
   } finally {
@@ -2949,6 +3046,12 @@ function updateVpLastFetchedLabel() {
   if (!vpLastFetchedAt) { el.textContent = ''; return; }
   const secAgo = Math.max(0, Math.round((Date.now() - vpLastFetchedAt) / 1000));
   el.textContent = secAgo < 2 ? 'updated just now' : `updated ${secAgo}s ago`;
+}
+// Manual "recentre on current price" — lets you jump back immediately
+// instead of waiting for the next auto-refresh tick.
+function vpRecenter() {
+  vpCenterPrice = null;
+  renderVolumeProfile();
 }
 setInterval(fetchVolumeProfile, VP_AUTO_REFRESH_MS);
 setInterval(updateVpLastFetchedLabel, 1000);
@@ -3030,7 +3133,12 @@ function renderVolumeProfile() {
   // (wider window, more levels compressed together), up = zoom in
   // (narrower window, fewer levels spread across the full panel height).
   if (!vpPriceRange) vpPriceRange = rawSpan / 2 * 1.05; // first render: fit the whole 24h range
-  const center = (vpCenterPrice != null) ? vpCenterPrice : (rawHigh + rawLow) / 2;
+  // v91: default centre is the live current price (not the dataset
+  // midpoint) — "return to current price" should mean the actual price,
+  // not just wherever the middle of the 24h range happens to sit.
+  const center = (vpCenterPrice != null) ? vpCenterPrice
+    : (priceCenter && priceCenter > 0) ? priceCenter
+    : (rawHigh + rawLow) / 2;
   const half = vpPriceRange;
   const high = center + half, low = center - half;
   const priceSpan = (high - low) || 1;
@@ -3124,10 +3232,23 @@ function renderVolumeProfile() {
 
     vpBarMap.push({ y, rowH, price: r.price, buy, sell, total, delta, count: r.count || 1 });
 
+    // v91: growth glow — this level's total volume increased on the last
+    // refresh, so flash it brighter and let the flash fade over ~1.6s
+    // instead of silently swapping bar heights out from under you.
+    let glowAlpha = 0;
+    const glowKey = r.price.toFixed(tickDecimals);
+    const glowTs = vpGrowGlow.get(glowKey);
+    if (glowTs) {
+      const age = Date.now() - glowTs;
+      if (age < VP_GLOW_DURATION_MS) glowAlpha = 1 - age / VP_GLOW_DURATION_MS;
+      else vpGrowGlow.delete(glowKey);
+    }
+
     // POC rows get a soft glow so the busiest level pops against the
     // alternating background instead of just being a slightly brighter fill.
     ctx.save();
     if (isPOC) { ctx.shadowColor = 'rgba(255,210,60,0.55)'; ctx.shadowBlur = 5; }
+    if (glowAlpha > 0) { ctx.shadowColor = `rgba(255,255,140,${glowAlpha})`; ctx.shadowBlur = 4 + 10 * glowAlpha; }
 
     // ── LEFT: total volume, stacked buy (inner) + sell (outer) ─────────
     let volBarW = Math.round((total / maxTotalVol) * maxBarWidth);
@@ -3142,11 +3263,19 @@ function renderVolumeProfile() {
       ctx.fillStyle = isPOC ? '#ff6a6a' : '#e8453f';
       ctx.fillRect(zeroX - buyW - sellW, y - barH / 2, sellW, barH);
     }
+    if (glowAlpha > 0 && volBarW > 0) {
+      // bright overlay wash on top of the bar itself, so the glow reads
+      // even where shadowBlur alone wouldn't show against the fill
+      ctx.fillStyle = `rgba(255,255,150,${0.35 * glowAlpha})`;
+      ctx.fillRect(zeroX - volBarW, y - barH / 2, volBarW, barH);
+    }
     if (volBarW > 0) {
       ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = glowAlpha > 0 ? `rgba(255,255,180,${0.5 + 0.5 * glowAlpha})` : 'rgba(0,0,0,0.65)';
+      ctx.lineWidth = 1;
       ctx.strokeRect(zeroX - volBarW + 0.5, y - barH / 2 + 0.5, volBarW - 1, barH - 1);
       if (isPOC) { ctx.shadowColor = 'rgba(255,210,60,0.55)'; ctx.shadowBlur = 5; }
+      if (glowAlpha > 0) { ctx.shadowColor = `rgba(255,255,140,${glowAlpha})`; ctx.shadowBlur = 4 + 10 * glowAlpha; }
     }
 
     // ── RIGHT: net delta only, single colour by sign ───────────────────
@@ -3157,8 +3286,13 @@ function renderVolumeProfile() {
         ? (isPOC ? '#00ffb4' : '#00d67e')
         : (isPOC ? '#ff6a6a' : '#e8453f');
       ctx.fillRect(zeroX, y - barH / 2, deltaW, barH);
+      if (glowAlpha > 0) {
+        ctx.fillStyle = `rgba(255,255,150,${0.35 * glowAlpha})`;
+        ctx.fillRect(zeroX, y - barH / 2, deltaW, barH);
+      }
       ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0;
-      ctx.strokeStyle = 'rgba(0,0,0,0.65)'; ctx.lineWidth = 1;
+      ctx.strokeStyle = glowAlpha > 0 ? `rgba(255,255,180,${0.5 + 0.5 * glowAlpha})` : 'rgba(0,0,0,0.65)';
+      ctx.lineWidth = 1;
       ctx.strokeRect(zeroX + 0.5, y - barH / 2 + 0.5, deltaW - 1, barH - 1);
     }
     ctx.restore();
