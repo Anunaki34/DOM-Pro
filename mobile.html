@@ -3103,33 +3103,37 @@ function renderVolumeProfile() {
   // this is what makes zooming out feel legible instead of overlapping.
   const rows = clusterVpRows(visibleRaw, yScale);
 
+  // v95: POC/VAH/VAL are computed from the FULL 24h dataset — same
+  // structural levels the trend bar evaluates — not recalculated from
+  // whatever's currently zoomed into view. Zooming changes what you're
+  // looking at, not what these levels are.
+  const allTotalVols = allRows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
+  let allPocIdx = 0;
+  for (let i = 1; i < allRows.length; i++) if (allTotalVols[i] > allTotalVols[allPocIdx]) allPocIdx = i;
+  const pocPrice = allRows[allPocIdx].price;
+  const allGrand = allTotalVols.reduce((a, b) => a + b, 0) || 1;
+  const allOrder = allRows.map((_, i) => i).sort((a, b) => allTotalVols[b] - allTotalVols[a]);
+  let allAcc = 0; const allVaSet = new Set();
+  for (const i of allOrder) { allVaSet.add(i); allAcc += allTotalVols[i]; if (allAcc >= allGrand * 0.70) break; }
+  let vahPrice = -Infinity, valPrice = Infinity;
+  allVaSet.forEach(i => { if (allRows[i].price > vahPrice) vahPrice = allRows[i].price; if (allRows[i].price < valPrice) valPrice = allRows[i].price; });
+
   const totalVols   = rows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
   const deltas      = rows.map(r => (r.buy_vol || 0) - (r.sell_vol || 0));
   const maxTotalVol = Math.max(1, ...totalVols);
   const maxAbsDelta = Math.max(1, ...deltas.map(d => Math.abs(d)));
-  const grandTotal  = totalVols.reduce((a, b) => a + b, 0) || 1;
 
-  // Point of Control (highest-volume price level) + 70% value area,
-  // the two hallmarks of a real volume-profile read — computed over the
-  // currently visible (zoomed) window, so they stay meaningful as you zoom.
-  let pocIdx = 0;
-  for (let i = 1; i < rows.length; i++) if (totalVols[i] > totalVols[pocIdx]) pocIdx = i;
-  const byVolDesc = rows.map((_, i) => i).sort((a, b) => totalVols[b] - totalVols[a]);
-  const valueAreaSet = new Set();
-  let acc = 0;
-  for (const i of byVolDesc) {
-    valueAreaSet.add(i);
-    acc += totalVols[i];
-    if (acc >= grandTotal * 0.70) break;
-  }
-  // Value Area High / Low — the price bounds of the value-area rows.
-  // Drawn as boundary lines instead of shading every row, so the bars
-  // underneath stay fully legible.
-  let vahPrice = -Infinity, valPrice = Infinity;
-  valueAreaSet.forEach(i => {
-    if (rows[i].price > vahPrice) vahPrice = rows[i].price;
-    if (rows[i].price < valPrice) valPrice = rows[i].price;
+  // Find which visible/clustered row (if any) actually represents the true
+  // POC, so the bright "POC bar" highlight only lights up when the real
+  // point of control is genuinely in view — not just the tallest bar
+  // within whatever slice you've zoomed into.
+  let pocIdx = -1, pocDist = Infinity;
+  rows.forEach((r, i) => {
+    const d = Math.abs(r.price - pocPrice);
+    if (d < pocDist) { pocDist = d; pocIdx = i; }
   });
+  const rowSpacingApprox = rawSpan / Math.max(1, allRows.length - 1);
+  const pocRowInView = pocIdx >= 0 && pocDist <= rowSpacingApprox * 1.5 && pocPrice >= low && pocPrice <= high;
 
   const zeroX = Math.floor(W / 2);
   const PAD_SIDE = 8;
@@ -3165,7 +3169,7 @@ function renderVolumeProfile() {
     const y = priceToY(r.price);
     const buy = r.buy_vol || 0, sell = r.sell_vol || 0, total = buy + sell;
     const delta = buy - sell;
-    const isPOC = i === pocIdx;
+    const isPOC = pocRowInView && i === pocIdx;
 
     vpBarMap.push({ y, rowH, price: r.price, buy, sell, total, delta, count: r.count || 1 });
 
@@ -3233,30 +3237,43 @@ function renderVolumeProfile() {
       ctx.strokeRect(zeroX + 0.5, y - barH / 2 + 0.5, deltaW - 1, barH - 1);
     }
     ctx.restore();
-
-    if (isPOC) {
-      ctx.save();
-      ctx.strokeStyle = 'rgba(255,210,60,0.9)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([2, 2]);
-      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
   });
 
-  // Value Area High / Low boundary lines
-  [vahPrice, valPrice].forEach(p => {
-    if (!isFinite(p)) return;
-    const y = priceToY(p);
+  // ── Reference lines: VAH / VAL / POC — always from the full 24h dataset,
+  // drawn thicker/brighter than before, each with a label chip pinned at
+  // the right end of its line (skipped entirely if zoomed away from it). ──
+  function drawVpRefLine(price, color, dash, labelText, labelBg) {
+    if (!isFinite(price)) return;
+    const y = priceToY(price);
+    if (y < 2 || y > H - 2) return; // off-screen at this zoom level
     ctx.save();
-    ctx.strokeStyle = 'rgba(140,170,255,0.55)';
-    ctx.lineWidth = 1;
-    ctx.setLineDash([5, 3]);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    if (dash) ctx.setLineDash(dash);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
-  });
+
+    ctx.save();
+    ctx.font = 'bold 10px monospace';
+    ctx.textBaseline = 'middle';
+    const textW = ctx.measureText(labelText).width;
+    const padX = 5;
+    const boxW = textW + padX * 2, boxH = 15;
+    const bx = W - boxW - 2, by = y - boxH / 2;
+    ctx.fillStyle = labelBg;
+    ctx.fillRect(bx, by, boxW, boxH);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx + 0.5, by + 0.5, boxW - 1, boxH - 1);
+    ctx.fillStyle = color;
+    ctx.textAlign = 'left';
+    ctx.fillText(labelText, bx + padX, y + 0.5);
+    ctx.restore();
+  }
+  drawVpRefLine(vahPrice, 'rgba(140,170,255,0.95)', [5, 3], 'VAH ' + vahPrice.toFixed(tickDecimals), 'rgba(20,26,40,0.94)');
+  drawVpRefLine(valPrice, 'rgba(140,170,255,0.95)', [5, 3], 'VAL ' + valPrice.toFixed(tickDecimals), 'rgba(20,26,40,0.94)');
+  drawVpRefLine(pocPrice, 'rgba(255,210,60,0.95)', [2, 2], 'POC ' + pocPrice.toFixed(tickDecimals), 'rgba(40,32,10,0.94)');
 
   // ── Dedicated price axis, same tick logic/style as renderPriceAxis ────
   const rawStep = priceSpan / 8;
@@ -3279,27 +3296,20 @@ function renderVolumeProfile() {
     axisCtx.fillText(p.toFixed(tickDecimals), 8, y + 3);
   }
 
-  // VAH / VAL labels
-  [{ p: vahPrice, tag: 'VAH' }, { p: valPrice, tag: 'VAL' }].forEach(({ p, tag }) => {
+  // Small colored tick marks on the axis strip for VAH/VAL/POC — the
+  // actual readable labels are the prominent end-of-line chips drawn on
+  // the main canvas; these just help the level stand out while scanning
+  // the axis itself.
+  [{ p: vahPrice, color: 'rgba(140,170,255,0.95)' },
+   { p: valPrice, color: 'rgba(140,170,255,0.95)' },
+   { p: pocPrice, color: 'rgba(255,210,60,0.95)' }].forEach(({ p, color }) => {
     if (!isFinite(p)) return;
     const y = priceToY(p);
-    if (y < 8 || y > H - 4) return;
-    axisCtx.fillStyle = 'rgba(140,170,255,0.9)';
-    axisCtx.font = '7px monospace';
-    axisCtx.textAlign = 'right';
-    axisCtx.fillText(tag, AW - 3, y - 3);
+    if (y < 2 || y > H - 2) return;
+    axisCtx.strokeStyle = color;
+    axisCtx.lineWidth = 2;
+    axisCtx.beginPath(); axisCtx.moveTo(0, y); axisCtx.lineTo(10, y); axisCtx.stroke();
   });
-
-  // POC label, pinned on the axis so it's never lost among regular ticks
-  const pocY = priceToY(rows[pocIdx].price);
-  if (pocY >= 0 && pocY <= H) {
-    axisCtx.fillStyle = '#1a1a10';
-    axisCtx.fillRect(0, pocY - 6, AW, 12);
-    axisCtx.fillStyle = '#ffd23c';
-    axisCtx.font = 'bold 9px monospace';
-    axisCtx.textAlign = 'left';
-    axisCtx.fillText(rows[pocIdx].price.toFixed(tickDecimals), 8, pocY + 3);
-  }
   updateTrendBarUI('vp', evalVpPanelTrend());
 }
 
