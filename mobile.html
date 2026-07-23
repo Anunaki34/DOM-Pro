@@ -630,13 +630,15 @@ select, button {
 input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
 .panel-toggle-bar { min-height:30px; padding-top:6px; padding-bottom:6px; }
 
-/* Candidate-pair / structure-note rows can be text-heavy; keep them from
-   forcing the whole page to scroll horizontally.                        */
-#taCandidateList, #taPairRows, #taConditionGrid, #taHistoryWrap { max-width:100%; overflow-x:auto; }
-
-/* Signal Snapshot's "Full TA ↓" jump button and other small controls
-   still work via scrollIntoView — just make sure nothing here overflows. */
-#taCompactCol .cc-head { flex-wrap:wrap; }
+/* ── Panel trend bars (FP / CVD / VP self-evaluation) ─────────────────── */
+.trend-bar-wrap { padding:5px 8px 6px; border-bottom:1px solid #1e2a3a; background:#0b0f16; }
+.trend-bar-track { position:relative; height:9px; background:#1a2233; border-radius:5px; overflow:hidden; }
+.trend-bar-bull { position:absolute; top:0; right:50%; height:100%; width:0%; background:linear-gradient(90deg,#005522,#00d67e); }
+.trend-bar-bear { position:absolute; top:0; left:50%; height:100%; width:0%; background:linear-gradient(90deg,#e8453f,#661100); }
+.trend-bar-center-line { position:absolute; left:50%; top:0; width:1px; height:100%; background:#0e1117; z-index:2; }
+.trend-bar-label { display:flex; justify-content:space-between; align-items:baseline; font-family:monospace; margin-top:4px; gap:8px; }
+.trend-bar-verdict { font-size:11px; font-weight:bold; letter-spacing:0.5px; white-space:nowrap; }
+.trend-bar-note { font-size:9px; color:#5a7a9a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
 </style>
 </head>
 <body>
@@ -768,35 +770,6 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
       </div>
     </div>
   </div>
-  <!-- Compact TA signal column -->
-  <div id="taCompactCol">
-    <div class="cc-head">
-      <span>&#9670; Signal Snapshot</span>
-      <button onclick="document.getElementById('signalPanelWrap').scrollIntoView({behavior:'smooth',block:'start'})">&#9881; Full TA &#8595;</button>
-    </div>
-    <div id="taPhase" class="neutral">&#8212; DETECTING PHASE &#8212;</div>
-    <div id="taAlertStrip">&#9888; &#8212;</div>
-    <div id="taSetupBadge" class="none">&#8212; SCANNING &#8212;</div>
-    <div id="taStrengthRow">
-      <span class="sr-label">Z</span>
-      <span id="taCompositeZ" class="sr-val">&#8212;</span>
-      <span class="sr-label" style="margin-left:4px;">Buf</span>
-      <span id="taConfirmBuffer" class="sr-val">&#xB7;&#xB7;&#xB7;&#xB7;&#xB7;</span>
-      <span class="sr-label" style="margin-left:4px;">Narr</span>
-      <div id="taNarrativeBarInline" style="flex:1;min-width:40px;height:5px;background:#0d1420;border-radius:3px;overflow:hidden;position:relative;">
-        <div id="taNarrativeFillInline"></div>
-        <div style="position:absolute;top:0;left:50%;width:1px;height:100%;background:#1e3050;"></div>
-      </div>
-      <span id="taNarrativeVal" class="sr-val" style="min-width:32px;text-align:right;">&#8212;</span>
-    </div>
-    <div id="taRegime" class="ranging" style="display:none;">RANGING</div>
-    <div style="display:flex;align-items:center;gap:6px;padding:2px 8px;border-top:1px solid #1a2a3a;">
-      <span style="font-size:7px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px;">Price</span>
-      <span id="taLivePrice" style="font-size:11px;color:#7a9ab0;font-family:monospace;">&#8212;</span>
-      <span id="taStatusDot" style="width:6px;height:6px;border-radius:50%;background:#334;display:inline-block;margin-left:auto;"></span>
-      <span id="taLastUpdate" style="font-size:7px;color:#334;">&#8212;</span>
-    </div>
-  </div>
   <!-- v68: Whale Orders Table — third column -->
   <div id="whaleTableCol">
     <div class="wt-head" id="whaleTableToggleBtn" title="Toggle whale orders table">
@@ -825,80 +798,6 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
 
   </div>
 </div>
-<div id="signalPanelWrap">
-  <div class="panel-toggle-bar" onclick="togglePanel('signalPanelWrap')">
-    <span>&#9670; Trading Assistant &#8212; Full Detail</span><span class="ptb-arrow">&#9660;</span>
-  </div>
-  <div class="panel-collapsible" id="signalPanelWrap-body" style="max-height:800px;">
-  <div id="taPanel">
-    <!-- Candidate Pairs -->
-    <div id="taCandidateList">
-      <div class="tc-section-label">
-        <span>&#9670; Candidate Entry / Exit Pairs <span id="taCandidateCount" style="color:#3a6a8a;">(0 pairs)</span></span>
-        <button class="tc-scan-btn" id="taScanBtn">&#8635; Re-scan</button>
-      </div>
-      <div id="taPairRows"><div class="tc-empty">Scanning order book for significant levels...</div></div>
-    </div>
-    <!-- Metrics -->
-    <div class="ta-metrics" style="padding:4px 10px;border-top:1px solid #1a2a3a;">
-      <div class="ta-metric-box"><span class="tmb-label">Score</span><span class="tmb-value conf-mid" id="taConfValue">&#8212;</span></div>
-      <div class="ta-metric-box"><span class="tmb-label">Risk/Reward</span><span class="tmb-value rr-ok" id="taRRValue">&#8212;</span></div>
-      <div class="ta-metric-box"><span class="tmb-label">Risk $</span><span class="tmb-value" id="taRiskPts" style="color:#aaccdd;font-size:11px;">&#8212;</span></div>
-    </div>
-    <!-- Score bar -->
-    <div id="taConfluenceWrap" style="padding:0 10px 4px;">
-      <div class="ta-conf-scores">
-        <span class="ta-conf-bull-score" id="taBullScore">Bull 0</span>
-        <span class="ta-conf-net" id="taConfNet">Z 0</span>
-        <span class="ta-conf-bear-score" id="taBearScore">Bear 0</span>
-      </div>
-      <div class="ta-conf-bar-outer">
-        <div class="ta-conf-bar-center"></div>
-        <div class="ta-conf-bar-bull" id="taBarBull" style="width:0%"></div>
-        <div class="ta-conf-bar-bear" id="taBarBear" style="width:0%"></div>
-      </div>
-    </div>
-    <!-- Structure Notes -->
-    <div style="font-size:8px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px;padding:3px 10px;border-top:1px solid #1a2a3a;background:#060a10;">Structure Notes</div>
-    <div id="taStructureNotes" style="font-size:9px;color:#4a6a7a;padding:3px 10px 5px;line-height:1.5;"></div>
-    <!-- Chips -->
-    <div style="font-size:8px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px;padding:3px 10px;border-top:1px solid #1a2a3a;background:#060a10;">Confluence Factors</div>
-    <div id="taConditionGrid" style="max-height:110px;overflow-y:auto;padding:4px 8px;"></div>
-    <!-- History -->
-    <div style="font-size:8px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px;padding:3px 10px;border-top:1px solid #1a2a3a;background:#060a10;">Signal History</div>
-    <div id="taHistoryWrap"><div style="color:#2a3a4a;font-size:8px;padding:4px;">No signals fired yet</div></div>
-    <!-- Controls -->
-    <div id="taControlsBar" style="display:flex;align-items:center;padding:2px 8px;background:#060a10;border-top:1px solid #1a2a3a;cursor:pointer;user-select:none;" onclick="(function(){var b=document.getElementById('taControls');var a=document.getElementById('taControlsArrow');var h=b.style.display==='none';b.style.display=h?'flex':'none';a.textContent=h?'▲':'▼';})()">
-      <span style="font-size:8px;color:#2a4a6a;text-transform:uppercase;letter-spacing:1px;">&#9881; Controls</span>
-      <span id="taControlsArrow" style="margin-left:auto;font-size:8px;color:#2a4a6a;">&#9660;</span>
-    </div>
-    <div id="taControls" style="display:none;">
-      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;padding:4px 8px;border-bottom:1px solid #1a2a3a;">
-        <span style="font-size:7px;color:#2a4a6a;letter-spacing:1px;text-transform:uppercase;width:100%;margin-bottom:1px;">Scoring</span>
-        <input type="number" id="taMinScore" value="12" min="5" max="30" style="display:none;">
-        <span style="font-size:8px;color:#3a5a3a;">&#8635; Adaptive thresholds</span>
-        <label>Min RR:</label><input type="number" id="taMinRR" value="1.5" min="1.0" max="5.0" step="0.1" style="width:45px;">
-        <label>Size ($):</label><input type="number" id="taPositionSize" value="1000" min="100" step="100" style="width:60px;">
-        <label>Prox%:</label><input type="number" id="taProxPct" value="0.3" min="0.1" max="2.0" step="0.05" style="width:45px;">
-        <label>Scan ($):</label><input type="number" id="taScanRange" value="1500" min="100" max="10000" step="100" style="width:55px;">
-        <label>Min Clus:</label><input type="number" id="taMinClusterVol" value="5.0" min="1.0" max="50.0" step="0.5" style="width:50px;">
-      </div>
-      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;border-bottom:1px solid #1a2a3a;">
-        <span style="font-size:7px;color:#2a4a6a;letter-spacing:1px;text-transform:uppercase;width:100%;margin-bottom:1px;">Phase &amp; Toggles</span>
-        <label><input type="checkbox" id="taMuteToggle"> Mute</label>
-        <label><input type="checkbox" id="taHideShortsToggle"> Hide Shorts</label>
-        <label><input type="checkbox" id="taFpQualityToggle" checked> FP-Quality</label>
-        <label title="Phase score boosts"><input type="checkbox" id="taPhaseBoostToggle" checked> <span style="color:#e8b800;">Phase Boost</span></label>
-        <label>Boost&#215;: <input type="number" id="taPhaseBoostFactor" value="1.5" min="1.0" max="3.0" step="0.1" style="width:42px;"></label>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:4px 8px;">
-        <button id="taClearHistory" style="width:auto;padding:1px 6px;">Clear History</button>
-      </div>
-    </div>
-  </div>
-  </div>
-</div>
-
 <!-- Main row: Bookmap + Candlestick -->
 <div class="container" style="padding-right:0;">
   <div id="bookmapBlock" style="display:flex;flex-direction:column;gap:0;flex-shrink:0;">
@@ -927,7 +826,18 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
         </span>
         <span class="ptb-arrow">&#9660;</span>
       </div>
-      <div class="panel-collapsible" id="candlestickBlock-body" style="max-height:520px;display:flex;flex-direction:column;">
+      <div class="panel-collapsible" id="candlestickBlock-body" style="max-height:570px;display:flex;flex-direction:column;">
+        <div class="trend-bar-wrap" id="fpTrendWrap">
+          <div class="trend-bar-track">
+            <div class="trend-bar-bear" id="fpTrendBear"></div>
+            <div class="trend-bar-center-line"></div>
+            <div class="trend-bar-bull" id="fpTrendBull"></div>
+          </div>
+          <div class="trend-bar-label">
+            <span class="trend-bar-verdict" id="fpTrendVerdict">&#8212; SCANNING &#8212;</span>
+            <span class="trend-bar-note" id="fpTrendNote"></span>
+          </div>
+        </div>
         <div id="timeRangeBar">
           <label>From:</label>
           <input type="datetime-local" id="trStart" step="60">
@@ -978,7 +888,18 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
       <span class="ptb-arrow">&#9660;</span>
     </span>
   </div>
-  <div class="panel-collapsible" id="cvdWrap-body" style="max-height:240px;">
+  <div class="panel-collapsible" id="cvdWrap-body" style="max-height:290px;">
+    <div class="trend-bar-wrap" id="cvdTrendWrap">
+      <div class="trend-bar-track">
+        <div class="trend-bar-bear" id="cvdTrendBear"></div>
+        <div class="trend-bar-center-line"></div>
+        <div class="trend-bar-bull" id="cvdTrendBull"></div>
+      </div>
+      <div class="trend-bar-label">
+        <span class="trend-bar-verdict" id="cvdTrendVerdict">&#8212; SCANNING &#8212;</span>
+        <span class="trend-bar-note" id="cvdTrendNote"></span>
+      </div>
+    </div>
     <div id="cvdHistogram">
       <canvas id="cvdCanvas"></canvas>
       <canvas id="cvdAxisCanvas"></canvas>
@@ -1001,7 +922,18 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
       <span class="ptb-arrow">&#9660;</span>
     </span>
   </div>
-  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:260px;">
+  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:310px;">
+    <div class="trend-bar-wrap" id="vpTrendWrap">
+      <div class="trend-bar-track">
+        <div class="trend-bar-bear" id="vpTrendBear"></div>
+        <div class="trend-bar-center-line"></div>
+        <div class="trend-bar-bull" id="vpTrendBull"></div>
+      </div>
+      <div class="trend-bar-label">
+        <span class="trend-bar-verdict" id="vpTrendVerdict">&#8212; SCANNING &#8212;</span>
+        <span class="trend-bar-note" id="vpTrendNote"></span>
+      </div>
+    </div>
     <div id="volumeProfileCanvasRow">
       <canvas id="volumeProfileCanvas"></canvas>
       <canvas id="volumeProfilePriceAxisCanvas" width="58" height="220"></canvas>
@@ -1039,12 +971,11 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
     'volumeProfileWrap'
   ];
   // Every other panel not named above — kept in their original relative
-  // order, placed at the very bottom.
+  // order, placed at the very bottom. (Signal Snapshot / Trading Assistant
+  // were removed in favor of the FP/CVD/VP trend bars.)
   var bottomOrder = [
-    'taCompactCol',
     'whaleTableCol',
-    'candleLogBlock',
-    'signalPanelWrap'
+    'candleLogBlock'
   ];
 
   var anchor = document.getElementById('dragHint'); // overlay elements stay last
@@ -1392,6 +1323,7 @@ function renderCandles() {
   if (!displayCandles.length) return;
   // Skip candles with sentinel OHLC=0 (not yet populated by real trades)
   displayCandles = displayCandles.filter(c => c.open !== 0 && c.high !== 0);
+  fpVisibleCandles = displayCandles; // v93: exact window drawn, for evalFpPanelTrend()
   let minPrice=Infinity, maxPrice=-Infinity; for (const c of displayCandles) { minPrice=Math.min(minPrice,c.low); maxPrice=Math.max(maxPrice,c.high); }
 
   // v54: apply price scale zoom from drag
@@ -1934,6 +1866,7 @@ const timeLabel = localHours.toString().padStart(2,'0') + ':' + d.getUTCMinutes(
 
   // ── v54: PRICE AXIS PANEL ───────────────────────────────────────────────
   renderPriceAxis(minPrice, maxPrice, priceSpan, yScale, h);
+  updateTrendBarUI('fp', evalFpPanelTrend());
 }
 
 // ── v60: renderFpMarkers (gradient heat‑map marker colours) ──
@@ -2742,6 +2675,8 @@ function updateRangeDelta(){ let from=parseFloat(rangeFromInput.value), to=parse
 
 // accumulateCVD is defined in the persist engine above (auto-saves on each bar close)
 let cvdBarMap=[], cvdUserScrolled=false, cvdLastRenderedCount=0;
+let cvdVisibleBars = []; // v93: the exact 48-bar window renderCVD() draws
+let fpVisibleCandles = []; // v93: the exact candle window renderCandles() draws
 cvdContainer.addEventListener("scroll",()=>{ cvdUserScrolled = !(cvdContainer.scrollLeft+cvdContainer.clientWidth>=cvdCanvas.width-20); });
 cvdContainer.addEventListener("mousemove",e=>{ const rect=cvdCanvas.getBoundingClientRect(),mouseX=e.clientX-rect.left; const hit=cvdBarMap.find(b=>mouseX>=b.x&&mouseX<b.x+b.w); if(hit){ const bd=(hit.buy-hit.sell).toFixed(2),t=new Date(hit.time), ts=t.getHours().toString().padStart(2,"0")+":"+t.getMinutes().toString().padStart(2,"0"); cvdTooltip.style.display="block"; const _ttw=cvdTooltip.offsetWidth||180; cvdTooltip.style.left=Math.max(0,e.clientX-_ttw-12)+"px"; cvdTooltip.style.top=(e.clientY-28)+"px"; cvdTooltip.innerHTML=ts+" &nbsp;|&nbsp;<span style='color:#00ff88'>B:"+hit.buy.toFixed(2)+"</span> <span style='color:#ff4d4d'>S:"+hit.sell.toFixed(2)+"</span> <span style='color:"+(+bd>=0?"#00ff88":"#ff4d4d")+"'>Δ"+bd+"</span>"; }else cvdTooltip.style.display="none";});
 cvdContainer.addEventListener("mouseleave",()=>cvdTooltip.style.display="none");
@@ -2809,6 +2744,7 @@ function renderCVD() {
 
   const TOTAL_BARS = 48;
   const bars   = src.slice(-TOTAL_BARS);
+  cvdVisibleBars = bars; // v93: expose the exact window drawn, for evalCvdPanelTrend()
   const H      = 220, ZERO_Y = Math.floor(H / 2);
   const AXIS_W = 46;
   const totalW = cvdContainer.clientWidth || 800;
@@ -2967,6 +2903,7 @@ function renderCVD() {
     ctx.stroke(); ctx.restore();
   }
   cvdContainer.scrollLeft = 0;
+  updateTrendBarUI('cvd', evalCvdPanelTrend());
 }
 
 // ── VOLUME PROFILE ───────────────────────────────────────────────────────
@@ -3363,6 +3300,7 @@ function renderVolumeProfile() {
     axisCtx.textAlign = 'left';
     axisCtx.fillText(rows[pocIdx].price.toFixed(tickDecimals), 8, pocY + 3);
   }
+  updateTrendBarUI('vp', evalVpPanelTrend());
 }
 
 // Hover tooltip — mirrors the CVD histogram's hover pattern
@@ -3463,7 +3401,7 @@ function connectTrades(){ const ws=new WebSocket("wss://stream.binance.com:9443/
 
 // Settings (v53 includes new controls and panel states)
 saveBtn.onclick=()=>{
-  const panelIds = ['deltaPanel','signalPanelWrap','obPressureWrap','bookmapBlock','candlestickBlock','candleLogBlock','cvdWrap','volumeProfileWrap'];
+  const panelIds = ['deltaPanel','obPressureWrap','bookmapBlock','candlestickBlock','candleLogBlock','cvdWrap','volumeProfileWrap'];
   const panelStates = {};
   panelIds.forEach(id => {
     const body = document.getElementById(id + '-body');
@@ -3476,15 +3414,6 @@ saveBtn.onclick=()=>{
     candleVisibleCount:candleVisibleCountInput.value, fpLogWindow:fpLogWindowInput.value, imbalance:imbalanceInput.value,
     deltaWindow:document.getElementById("deltaWindow").value, obRange:document.getElementById("obRangeInput").value,
     whaleDomOnly:whaleDomToggle.checked, heatmapToggle:heatmapToggle.checked, imbalanceToggle:imbalanceToggle.checked,
-    taMinScore:document.getElementById("taMinScore").value,
-    taMinRR:document.getElementById("taMinRR").value, taPositionSize:document.getElementById("taPositionSize").value,
-    taProxPct:document.getElementById("taProxPct").value, taScanRange:document.getElementById("taScanRange").value,
-    taMinClusterVol:document.getElementById("taMinClusterVol").value,
-    taMute:document.getElementById("taMuteToggle").checked, taHideShorts: taHideShortsToggle.checked,
-    taFpQuality: taFpQualityToggle.checked,
-    taPhaseBoost: taPhaseBoostToggle.checked,
-    taPhaseBoostFactor: taPhaseBoostInput.value,
-    taControlsOpen: document.getElementById('taControls').style.display !== 'none',
     fpLightMode,
     fpClusterOverlay,
     showWhaleTable,
@@ -3511,27 +3440,10 @@ loadBtn.onclick=()=>{ const s=JSON.parse(localStorage.getItem("domSettings")||"{
   if(s.whaleDomOnly!==undefined) whaleDomToggle.checked=s.whaleDomOnly;
   if(s.heatmapToggle!==undefined) heatmapToggle.checked=s.heatmapToggle;
   if(s.imbalanceToggle!==undefined) imbalanceToggle.checked=s.imbalanceToggle;
-    if(s.taMinScore) document.getElementById("taMinScore").value=s.taMinScore;
-  if(s.taMinRR) document.getElementById("taMinRR").value=s.taMinRR;
-  if(s.taPositionSize) document.getElementById("taPositionSize").value=s.taPositionSize;
-  if(s.taProxPct) document.getElementById("taProxPct").value=s.taProxPct;
-  if(s.taScanRange) document.getElementById("taScanRange").value=s.taScanRange;
-  if(s.taMinClusterVol) document.getElementById("taMinClusterVol").value=s.taMinClusterVol;
-  if(s.taMute!==undefined) document.getElementById("taMuteToggle").checked=s.taMute;
-  if(s.taHideShorts !== undefined) { taHideShortsToggle.checked = s.taHideShorts; taHideShorts = s.taHideShorts; }
-  if(s.taFpQuality !== undefined) { taFpQualityToggle.checked = s.taFpQuality; taFpQualityEnabled = s.taFpQuality; }
-  if(s.taPhaseBoost !== undefined) { taPhaseBoostToggle.checked = s.taPhaseBoost; taPhaseBoostEnabled = s.taPhaseBoost; }
-  if(s.taPhaseBoostFactor !== undefined) { taPhaseBoostInput.value = s.taPhaseBoostFactor; taPhaseBoostFactor = parseFloat(s.taPhaseBoostFactor) || 1.5; }
   if(s.fpLightMode !== undefined) { fpLightMode = s.fpLightMode; applyFpBgMode(); }
   if(s.fpClusterOverlay !== undefined) { fpClusterOverlay = s.fpClusterOverlay; applyFpClusterMode(); }
   if(s.showWhaleTable   !== undefined) { showWhaleTable   = s.showWhaleTable;   applyWhaleTableMode(); }
   if(s.vpShowProfile    !== undefined) { vpShowProfileToggle.checked = s.vpShowProfile; applyVpShowProfile(); }
-  if(s.taControlsOpen !== undefined) {
-    const ctrl = document.getElementById('taControls');
-    const arrow = document.getElementById('taControlsArrow');
-    if (ctrl) ctrl.style.display = s.taControlsOpen ? 'flex' : 'none';
-    if (arrow) arrow.textContent = s.taControlsOpen ? '▲' : '▼';
-  }
   if(s.panelStates) {
     Object.entries(s.panelStates).forEach(([id, collapsed]) => {
       const body = document.getElementById(id + '-body');
@@ -3753,6 +3665,249 @@ function evalFootprint() {
 
   return { bull: totalBull, bear: totalBear, label, note: compositeNote };
 }
+
+// ══════════════════════════════════════════════════════════════════════
+// PANEL TREND BARS — v92
+// Replaces the Trading Assistant / Signal Snapshot panels with a
+// self-contained bias readout on top of each of the FP, CVD, and VP
+// panels — each one evaluates only its own panel's data, no cross-panel
+// scoring engine, no settings, no history log.
+// ══════════════════════════════════════════════════════════════════════
+
+// Shared renderer: paints the bidirectional bull/bear bar + verdict text
+// for a given panel prefix ('fp' | 'cvd' | 'vp'), given {score,label,note}.
+function updateTrendBarUI(prefix, result) {
+  const bull   = document.getElementById(prefix + 'TrendBull');
+  const bear   = document.getElementById(prefix + 'TrendBear');
+  const verdict = document.getElementById(prefix + 'TrendVerdict');
+  const note   = document.getElementById(prefix + 'TrendNote');
+  if (!bull || !bear || !verdict) return;
+  const s = Math.max(-100, Math.min(100, result.score || 0));
+  bull.style.width = Math.max(0, s) / 2 + '%';
+  bear.style.width = Math.max(0, -s) / 2 + '%';
+  const colors = {
+    BULLISH: '#00ffb4', 'LEAN BULL': '#6fae8a', NEUTRAL: '#8aaabb',
+    'LEAN BEAR': '#c98080', BEARISH: '#ff6a6a', WAITING: '#5a7a9a'
+  };
+  const col = colors[result.label] || '#8aaabb';
+  verdict.textContent = result.label + ' (' + (s > 0 ? '+' : '') + s.toFixed(0) + ')';
+  verdict.style.color = col;
+  if (note) note.textContent = result.note || '';
+}
+
+function scoreToVerdict(bull, bear, mult) {
+  const score = Math.max(-100, Math.min(100, (bull - bear) * mult));
+  let label;
+  if (score > 40) label = 'BULLISH';
+  else if (score > 12) label = 'LEAN BULL';
+  else if (score < -40) label = 'BEARISH';
+  else if (score < -12) label = 'LEAN BEAR';
+  else label = 'NEUTRAL';
+  return { score, label };
+}
+
+// ── FP / Footprint panel trend ───────────────────────────────────────────
+// Considers: trend direction across the visible candles (net move + swing
+// structure), POC location on EACH visible candle, stacked imbalances per
+// candle, and absorption-at-the-low / distribution-at-the-high on the
+// extreme candles in view.
+function evalFpPanelTrend() {
+  const cs = (fpVisibleCandles || []).filter(c => c && c.open !== 0 && c.high !== 0);
+  if (cs.length < 2) return { score: 0, label: 'WAITING', note: 'not enough candles in view' };
+
+  let bull = 0, bear = 0;
+  const notes = [];
+
+  // 1) Directional structure: net move across the view + HH/HL vs LH/LL swings
+  const first = cs[0], last = cs[cs.length - 1];
+  const avgRange = cs.reduce((s, c) => s + (c.high - c.low), 0) / cs.length || (tickSize || 1);
+  const netMove = last.close - first.open;
+  if (netMove > avgRange * 0.3) { bull += 2; notes.push('trend up'); }
+  else if (netMove < -avgRange * 0.3) { bear += 2; notes.push('trend down'); }
+  else notes.push('range-bound');
+
+  let hh = 0, hl = 0, lh = 0, ll = 0;
+  for (let i = 1; i < cs.length; i++) {
+    if (cs[i].high > cs[i - 1].high) hh++; else if (cs[i].high < cs[i - 1].high) lh++;
+    if (cs[i].low > cs[i - 1].low) hl++; else if (cs[i].low < cs[i - 1].low) ll++;
+  }
+  if (hh > lh && hl > ll) { bull += 1; notes.push('HH/HL structure'); }
+  else if (lh > hh && ll > hl) { bear += 1; notes.push('LH/LL structure'); }
+
+  // 2) Per-candle POC location + stacked imbalances, plus absorption/
+  //    distribution on the extreme (lowest-low / highest-high) candle.
+  let lowestIdx = 0, highestIdx = 0;
+  for (let i = 1; i < cs.length; i++) {
+    if (cs[i].low < cs[lowestIdx].low) lowestIdx = i;
+    if (cs[i].high > cs[highestIdx].high) highestIdx = i;
+  }
+
+  cs.forEach((c, i) => {
+    if (!c.trades || !c.trades.length) return;
+    const range = c.high - c.low || (tickSize || 1);
+    const volMap = new Map(), buyMap = new Map(), sellMap = new Map();
+    for (const t of c.trades) {
+      const key = formatPrice(t.price);
+      volMap.set(key, (volMap.get(key) || 0) + t.size);
+      const m = t.isSell ? sellMap : buyMap;
+      m.set(key, (m.get(key) || 0) + t.size);
+    }
+    let pocPrice = c.low, pocVol = 0;
+    for (const [k, v] of volMap) if (v > pocVol) { pocVol = v; pocPrice = parseFloat(k); }
+    const pocPos = (pocPrice - c.low) / range;
+    const isBullClose = c.close >= c.open;
+    if (pocPos <= 0.25 && isBullClose) bull += 1;
+    if (pocPos >= 0.75 && !isBullClose) bear += 1;
+
+    // Stacked imbalances within this candle (same 3:1 convention the
+    // footprint's own imbalance highlighting already uses)
+    let bidImb = 0, askImb = 0;
+    for (const key of volMap.keys()) {
+      const b = buyMap.get(key) || 0, s = sellMap.get(key) || 0;
+      if (s > 0 && b >= s * 3) bidImb++;
+      else if (b > 0 && s >= b * 3) askImb++;
+      else if (s === 0 && b > 0) bidImb++;
+      else if (b === 0 && s > 0) askImb++;
+    }
+    if (bidImb > askImb + 1) bull += 1;
+    else if (askImb > bidImb + 1) bear += 1;
+
+    // Absorption at the lowest-low candle in view: heavy buying soaking up
+    // sells at the low without further downside = bullish reversal clue.
+    if (i === lowestIdx) {
+      const tot = c.buyVol + c.sellVol;
+      if (tot > 0 && c.buyVol / tot > 0.6) { bull += 2; notes.push('absorption @ low'); }
+    }
+    // Distribution at the highest-high candle in view: heavy selling into
+    // the highs without further upside = bearish reversal clue.
+    if (i === highestIdx) {
+      const tot = c.buyVol + c.sellVol;
+      if (tot > 0 && c.sellVol / tot > 0.6) { bear += 2; notes.push('distribution @ high'); }
+    }
+  });
+
+  const v = scoreToVerdict(bull, bear, 12);
+  return { score: v.score, label: v.label, note: notes.slice(0, 3).join(' \u00B7 ') || '\u2014' };
+}
+
+// ── CVD panel trend ───────────────────────────────────────────────────────
+// v93: scans EVERY bar currently drawn in the CVD histogram (the same
+// 48-bar window renderCVD() paints, via cvdVisibleBars) rather than just
+// the last handful — net cumulative delta across the whole view, how many
+// of the visible bars lean buy vs sell, and price-vs-CVD divergence
+// measured start-to-end of that same window. The narrow recent-window
+// helpers (evalCVDTrend/evalCVDDivergence) and the live bar's immediate
+// delta are folded in on top as fast-reacting confirmation, not replaced.
+function evalCvdPanelTrend() {
+  const bars = cvdVisibleBars || [];
+  if (bars.length < 3) return { score: 0, label: 'WAITING', note: 'not enough bars in view' };
+
+  let bull = 0, bear = 0;
+  const notes = [];
+
+  // 1) Net cumulative delta across the WHOLE visible window (macro bias)
+  const deltas = bars.map(c => c.buyVol - c.sellVol);
+  const cumNet = deltas.reduce((a, b) => a + b, 0);
+  const avgAbs = deltas.reduce((a, b) => a + Math.abs(b), 0) / bars.length || 1;
+  const macroThresh = avgAbs * bars.length * 0.15;
+  if (cumNet > macroThresh) { bull += 2; notes.push('CVD net +' + cumNet.toFixed(0) + ' over view'); }
+  else if (cumNet < -macroThresh) { bear += 2; notes.push('CVD net ' + cumNet.toFixed(0) + ' over view'); }
+  else notes.push('CVD flat over view');
+
+  // 2) How many of the visible bars lean buy vs sell (breadth, not just net)
+  const buyBars = deltas.filter(d => d > 0).length;
+  const sellBars = deltas.filter(d => d < 0).length;
+  if (buyBars > sellBars * 1.5) { bull += 1; notes.push(buyBars + '/' + bars.length + ' bars buy-leaning'); }
+  else if (sellBars > buyBars * 1.5) { bear += 1; notes.push(sellBars + '/' + bars.length + ' bars sell-leaning'); }
+
+  // 3) Price vs. CVD divergence across the SAME full window: did price and
+  // cumulative delta move the same direction start-to-end?
+  const priceMove = bars[bars.length - 1].close - bars[0].open;
+  let cum = 0; const cumSeries = deltas.map(d => (cum += d));
+  const cvdMove = cumSeries[cumSeries.length - 1] - cumSeries[0];
+  const priceRange = Math.max(...bars.map(b => b.high)) - Math.min(...bars.map(b => b.low)) || (tickSize || 1);
+  if (priceMove < -priceRange * 0.15 && cvdMove > macroThresh) { bull += 2; notes.push('bullish divergence vs price'); }
+  else if (priceMove > priceRange * 0.15 && cvdMove < -macroThresh) { bear += 2; notes.push('bearish divergence vs price'); }
+
+  // 4) Fold in the narrow recent-window helpers (fast-reacting confirmation)
+  const trend = evalCVDTrend();
+  const div   = evalCVDDivergence();
+  bull += trend.bull + div.bull;
+  bear += trend.bear + div.bear;
+  if (trend.bull || trend.bear) notes.push('recent ' + trend.note);
+  if (div.bull || div.bear) notes.push(div.note);
+
+  // 5) Live/forming bar's own delta, for immediacy
+  if (currentCandle) {
+    const liveDelta = currentCandle.buyVol - currentCandle.sellVol;
+    if (Math.abs(liveDelta) > 0.01) {
+      if (liveDelta > 0) { bull += 1; notes.push('live \u0394+' + liveDelta.toFixed(1)); }
+      else { bear += 1; notes.push('live \u0394' + liveDelta.toFixed(1)); }
+    }
+  }
+
+  const v = scoreToVerdict(bull, bear, 9);
+  return { score: v.score, label: v.label, note: notes.slice(0, 3).join(' \u00B7 ') || '\u2014' };
+}
+
+// ── Volume Profile panel trend ───────────────────────────────────────────
+// v94: always scored against the FULL 24h dataset (volumeProfileData),
+// regardless of whatever price window you've zoomed/panned into. POC/VAH/
+// VAL are structural levels anchored to the whole session's auction — if
+// they were recomputed from just the zoomed-in slice, "POC" would stop
+// meaning the real point of control the moment you dragged the view, and
+// the trend readout would contradict the actual key levels drawn on the
+// panel. Zooming changes what you're LOOKING at; it doesn't change what
+// the data IS, so the evaluation doesn't change either.
+function evalVpPanelTrend() {
+  if (!volumeProfileData.length || !priceCenter) return { score: 0, label: 'WAITING', note: 'no data yet' };
+  const rows = volumeProfileData;
+
+  const totalVols = rows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
+  let pocIdx = 0;
+  for (let i = 1; i < rows.length; i++) if (totalVols[i] > totalVols[pocIdx]) pocIdx = i;
+  const pocPrice = rows[pocIdx].price;
+  const grand = totalVols.reduce((a, b) => a + b, 0) || 1;
+  const order = rows.map((_, i) => i).sort((a, b) => totalVols[b] - totalVols[a]);
+  let acc = 0; const vaSet = new Set();
+  for (const i of order) { vaSet.add(i); acc += totalVols[i]; if (acc >= grand * 0.70) break; }
+  let vah = -Infinity, val = Infinity;
+  vaSet.forEach(i => { if (rows[i].price > vah) vah = rows[i].price; if (rows[i].price < val) val = rows[i].price; });
+
+  let bull = 0, bear = 0; const notes = [];
+  if (priceCenter > vah) { bull += 2; notes.push('above VAH'); }
+  else if (priceCenter < val) { bear += 2; notes.push('below VAL'); }
+  else notes.push('inside value area');
+
+  if (priceCenter > pocPrice) { bull += 1; notes.push('above POC'); }
+  else if (priceCenter < pocPrice) { bear += 1; notes.push('below POC'); }
+
+  // Aggregate buy/sell dominance across the WHOLE 24h profile
+  let totBuy = 0, totSell = 0;
+  for (const r of rows) { totBuy += r.buy_vol || 0; totSell += r.sell_vol || 0; }
+  const tot = totBuy + totSell;
+  if (tot > 0) {
+    const ratio = totBuy / tot;
+    if (ratio > 0.58) { bull += 1; notes.push('profile buy-heavy'); }
+    else if (ratio < 0.42) { bear += 1; notes.push('profile sell-heavy'); }
+  }
+
+  // How many price levels individually lean buy vs sell across the whole
+  // session (breadth, not just the aggregate total — a few huge levels can
+  // otherwise dominate the ratio)
+  const leanBuy = rows.filter(r => (r.buy_vol || 0) > (r.sell_vol || 0)).length;
+  const leanSell = rows.filter(r => (r.sell_vol || 0) > (r.buy_vol || 0)).length;
+  if (leanBuy > leanSell * 1.5) { bull += 1; notes.push(leanBuy + '/' + rows.length + ' levels buy-leaning'); }
+  else if (leanSell > leanBuy * 1.5) { bear += 1; notes.push(leanSell + '/' + rows.length + ' levels sell-leaning'); }
+
+  const span = (vah - val) || 1;
+  const distVAH = Math.abs(priceCenter - vah) / span, distVAL = Math.abs(priceCenter - val) / span;
+  if (Math.min(distVAH, distVAL) < 0.05) notes.push('near VA edge');
+
+  const v = scoreToVerdict(bull, bear, 15);
+  return { score: v.score, label: v.label, note: notes.slice(0, 3).join(' \u00B7 ') || '\u2014' };
+}
+
 const taMinScoreInput     = document.getElementById('taMinScore');
 const taMinRRInput        = document.getElementById('taMinRR');
 const taPositionSizeInput = document.getElementById('taPositionSize');
@@ -4507,6 +4662,11 @@ const _phaseBoostMap = {
 };
 
 function generateTradeIdea() {
+  // v92: Trading Assistant / Signal Snapshot panels were removed in favor of
+  // the FP/CVD/VP trend bars — this whole engine is now dead weight with
+  // nothing to write to, so bail out immediately rather than leaving dozens
+  // of now-unguarded taXxx DOM writes further down this function.
+  if (!taSetupBadge) return;
   if (_liveStartTime === 0) _liveStartTime = Date.now();
   if (!priceCenter || !bookReady) {
     if (taSetupBadge) { taSetupBadge.className = 'none'; taSetupBadge.textContent = '— WAIT —'; }
