@@ -639,6 +639,12 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
 .trend-bar-label { display:flex; justify-content:space-between; align-items:baseline; font-family:monospace; margin-top:4px; gap:8px; }
 .trend-bar-verdict { font-size:11px; font-weight:bold; letter-spacing:0.5px; white-space:nowrap; }
 .trend-bar-note { font-size:9px; color:#5a7a9a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+
+/* ── Bookmap iceberg / spoofing / fakeout alert strip ─────────────────── */
+#bmAlertWrap { padding:5px 8px 6px; border-bottom:1px solid #1e2a3a; background:#0b0f16; display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+#bmAlertText { font-family:monospace; font-size:11px; font-weight:bold; color:#5a7a9a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#bmAlertWrap label { display:flex; align-items:center; gap:4px; font-size:9px; color:#5a7a9a; font-family:monospace; cursor:pointer; flex-shrink:0; }
+#bmAlertWrap input[type="checkbox"] { cursor:pointer; }
 </style>
 </head>
 <body>
@@ -804,7 +810,13 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
     <div class="panel-toggle-bar" onclick="togglePanel('bookmapBlock')">
       <span>&#9670; Bookmap</span><span class="ptb-arrow">&#9660;</span>
     </div>
-    <div class="panel-collapsible" id="bookmapBlock-body" style="max-height:520px;">
+    <div class="panel-collapsible" id="bookmapBlock-body" style="max-height:560px;">
+      <div id="bmAlertWrap">
+        <span id="bmAlertText">&#8212; CLEAR &#8212;</span>
+        <label onclick="event.stopPropagation()">
+          <input type="checkbox" id="bmAlertMuteToggle"> Mute
+        </label>
+      </div>
       <canvas id="bookmapCanvas" width="800" height="500"></canvas>
       <div style="font-size:9px;color:#3a5a7a;text-align:center;font-family:monospace;letter-spacing:0.5px;padding:2px 0;">
         &#x2195; Drag Y = Depth &nbsp;|&nbsp; &#x2194; Drag X = Time window
@@ -1076,6 +1088,7 @@ const obBidBar = document.getElementById("obBidBar"), obAskBar = document.getEle
 const obMidPrice = document.getElementById("obMidPrice"), obRangeLine = document.getElementById("obRangeLine"), obWhaleAlert = document.getElementById("obWhaleAlert");
 const obBidLabel = document.getElementById("obBidLabel"), obAskLabel = document.getElementById("obAskLabel"), obNarrative = document.getElementById("obNarrative");
 const bookmapCanvas = document.getElementById("bookmapCanvas"), bookmapCtx = bookmapCanvas.getContext("2d");
+const bmAlertText = document.getElementById("bmAlertText"), bmAlertMuteToggle = document.getElementById("bmAlertMuteToggle");
 const bmTimeWindowInput = document.getElementById("bmTimeWindow"), bmSecPerPixelInput = document.getElementById("bmSecPerPixel"), bmMinWhaleInput = document.getElementById("bmMinWhale");
 const bmClusterSizeInput = document.getElementById("bmClusterSize"), bmWhaleHighlightCheck = document.getElementById("bmWhaleHighlight");
 const bmBubbleMinVolInput = document.getElementById("bmBubbleMinVol"), bmGhostSecInput = document.getElementById("bmGhostSec");
@@ -2432,6 +2445,7 @@ function renderBookmap() {
     ctx.fillText(label, x, h - 3);
   }
   ctx.fillStyle="#aabbcc"; ctx.font="bold 9px monospace"; ctx.textAlign="right"; ctx.fillText(new Date().toLocaleTimeString(),w-2,12);
+  updateBookmapAlerts();
 }
 
 let _lastObRender=0;
@@ -3561,6 +3575,55 @@ function evalSpoofing(){
   return {bull:0,bear:0,label:"Spoof",note:"none"};
 }
 
+// ── Bookmap alert strip: iceberg / spoofing / fakeout ──────────────────────
+// Drives the indicator on top of the Bookmap panel from the existing
+// evalIceberg/evalSpoofing/evalFakeout detectors (previously only fed the
+// removed Trading Assistant). Priority when more than one fires at once:
+// iceberg (real hidden size) > spoofing (fake wall) > fakeout (failed
+// break) — iceberg is the most concrete/actionable of the three. Sound
+// alerts are debounced per distinct detection so a persisting condition
+// doesn't re-trigger the tone every 250ms render tick.
+let bmAlertLastKey = null, bmAlertLastTime = 0;
+const BM_ALERT_COOLDOWN_MS = 4000;
+function updateBookmapAlerts() {
+  if (!bmAlertText) return;
+  const iceberg = evalIceberg();
+  const spoof   = evalSpoofing();
+  const fakeout = evalFakeout();
+
+  const candidates = [
+    { type: 'ICEBERG', res: iceberg },
+    { type: 'SPOOF',   res: spoof },
+    { type: 'FAKEOUT', res: fakeout },
+  ];
+  let active = null;
+  for (const c of candidates) {
+    if (c.res.bull > 0 || c.res.bear > 0) { active = c; break; }
+  }
+
+  if (!active) {
+    bmAlertText.textContent = '\u2014 CLEAR \u2014';
+    bmAlertText.style.color = '#5a7a9a';
+    bmAlertText.classList.remove('blinking');
+    return;
+  }
+
+  const isBull = active.res.bull > active.res.bear;
+  const color = isBull ? '#00ffb4' : '#ff6a6a';
+  bmAlertText.textContent = '\u26A0 ' + active.type + ' \u2014 ' + (isBull ? 'BULLISH' : 'BEARISH') + ': ' + active.res.note;
+  bmAlertText.style.color = color;
+  bmAlertText.classList.add('blinking');
+
+  // Debounced sound alert — only re-fire for a genuinely new detection
+  const key = active.type + '|' + active.res.note;
+  const now = Date.now();
+  if (key !== bmAlertLastKey || (now - bmAlertLastTime) > BM_ALERT_COOLDOWN_MS) {
+    bmAlertLastKey = key;
+    bmAlertLastTime = now;
+    if (!bmAlertMuteToggle || !bmAlertMuteToggle.checked) playTaAlert(isBull ? 'long' : 'short');
+  }
+}
+
 // ── evalFootprint — intra-candle footprint quality ────────────────────────
 // Three sub-scores, all use currentCandle.trades[] directly:
 //   1. POC Position   — where is the highest-volume price level in the candle range?
@@ -3813,6 +3876,26 @@ function evalFpPanelTrend() {
     if (pocPos <= 0.25 && isBullClose) bull += 1;
     if (pocPos >= 0.75 && !isBullClose) bear += 1;
 
+    // v96: Effort vs Result (delta-body divergence) on EVERY visible
+    // candle, not just the current forming one — the same check
+    // evalFootprint() does for the live candle alone. Aggressive volume
+    // that fails to move price is a footprint tell wherever it happens in
+    // the view, and strong effort THAT does move price is conviction.
+    const bodySize  = Math.abs(c.close - c.open);
+    const bodyPct   = bodySize / range;
+    const cDelta    = c.buyVol - c.sellVol;
+    const cTotalVol = c.buyVol + c.sellVol;
+    const deltaRatio = cTotalVol > 0 ? Math.abs(cDelta) / cTotalVol : 0;
+    if (deltaRatio > 0.25 && bodyPct < 0.20) {
+      // High effort, tiny result — the aggressive side got absorbed
+      if (cDelta > 0) { bear += 1; notes.push('buyers failed @ ' + formatPrice(c.close)); }
+      else { bull += 1; notes.push('sellers failed @ ' + formatPrice(c.close)); }
+    } else if (deltaRatio > 0.35 && bodyPct > 0.50) {
+      // High effort AND strong result in the same direction = conviction
+      if (cDelta > 0 && isBullClose) { bull += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
+      else if (cDelta < 0 && !isBullClose) { bear += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
+    }
+
     // Sorted price levels (ascending) so we can tell WHERE imbalances sit
     // within the candle's range, and detect stacked/consecutive runs —
     // same 3:1 convention the footprint's own imbalance highlighting uses.
@@ -3992,6 +4075,30 @@ function evalCvdPanelTrend() {
   if (maxBuyRun >= 4) { bull += 1; notes.push(maxBuyRun + '-bar buy streak'); }
   if (maxSellRun >= 4) { bear += 1; notes.push(maxSellRun + '-bar sell streak'); }
 
+  // 6b) Hourly breakdown — the same :00 boundary segments the panel prints
+  // a net-delta figure at (the dashed vertical separators + "+2.3k"/"-1.1k"
+  // labels). Grouped independently here so the check reflects the true sum
+  // of each hour's bars, and weights the most recent hour a little heavier
+  // since it's the freshest read.
+  const hourGroups = []; let curGroup = [];
+  bars.forEach(c => {
+    const d = new Date(c.startTime);
+    if (d.getMinutes() === 0 && curGroup.length) { hourGroups.push(curGroup); curGroup = []; }
+    curGroup.push(c);
+  });
+  if (curGroup.length) hourGroups.push(curGroup);
+  if (hourGroups.length >= 2) {
+    const hourNets = hourGroups.map(g => g.reduce((s, c) => s + (c.buyVol - c.sellVol), 0));
+    const posHours = hourNets.filter(v => v > 0).length, negHours = hourNets.filter(v => v < 0).length;
+    if (posHours > negHours * 1.5) { bull += 1; notes.push(posHours + '/' + hourNets.length + ' hours net buy'); }
+    else if (negHours > posHours * 1.5) { bear += 1; notes.push(negHours + '/' + hourNets.length + ' hours net sell'); }
+    const lastHourNet = hourNets[hourNets.length - 1];
+    if (Math.abs(lastHourNet) > avgAbs * 2) {
+      if (lastHourNet > 0) { bull += 1; notes.push('latest hour strong buy'); }
+      else { bear += 1; notes.push('latest hour strong sell'); }
+    }
+  }
+
   // 7) Fold in the narrow recent-window helpers (fast-reacting confirmation)
   const trend = evalCVDTrend();
   const div   = evalCVDDivergence();
@@ -4111,6 +4218,32 @@ function evalVpPanelTrend() {
   const lowerTot = lowerBuy + lowerSell, upperTot = upperBuy + upperSell;
   if (lowerTot > 0 && lowerBuy / lowerTot > 0.58) { bull += 1; notes.push('buy support building below'); }
   if (upperTot > 0 && upperSell / upperTot > 0.58) { bear += 1; notes.push('sell resistance building above'); }
+
+  // v96: Growth-glow momentum — which side has been actively GROWING since
+  // the last refresh (the same flash the bars visually show), not just
+  // which side has more volume right now. A live momentum tell layered on
+  // top of the static snapshot the rest of this function reads.
+  let growBuy = 0, growSell = 0;
+  const nowTs = Date.now();
+  rows.forEach(r => {
+    const key = r.price.toFixed(tickDecimals);
+    const glowTs = vpGrowGlow.get(key);
+    if (glowTs && (nowTs - glowTs) < VP_GLOW_DURATION_MS) {
+      if ((r.buy_vol || 0) >= (r.sell_vol || 0)) growBuy++; else growSell++;
+    }
+  });
+  if (growBuy > growSell * 1.5 && growBuy >= 2) { bull += 1; notes.push('growth skew buy'); }
+  else if (growSell > growBuy * 1.5 && growSell >= 2) { bear += 1; notes.push('growth skew sell'); }
+
+  // v96: Delta bar MAGNITUDE (the right-side delta bars themselves), not
+  // just which way each level leans. One outsized imbalance should count
+  // for more than several tiny ones — the breadth check above already
+  // covers headcount, this covers size.
+  const deltaSum = rows.reduce((s, r) => s + ((r.buy_vol || 0) - (r.sell_vol || 0)), 0);
+  const deltaAbsSum = rows.reduce((s, r) => s + Math.abs((r.buy_vol || 0) - (r.sell_vol || 0)), 0) || 1;
+  const deltaSkew = deltaSum / deltaAbsSum; // -1..1
+  if (deltaSkew > 0.15) { bull += 1; notes.push('delta bars skew buy'); }
+  else if (deltaSkew < -0.15) { bear += 1; notes.push('delta bars skew sell'); }
 
   const span = (vah - val) || 1;
   const distVAH = Math.abs(priceCenter - vah) / span, distVAL = Math.abs(priceCenter - val) / span;
