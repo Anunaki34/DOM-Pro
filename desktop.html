@@ -113,8 +113,8 @@ button,input { margin:3px; width:60px; font-size:10px; }
 #cvdTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
 /* Volume Profile — mirrors the candlestick canvas-row / price-axis layout */
 #volumeProfileCanvasRow { display:flex; flex-direction:row; position:relative; width:100%; flex-shrink:0; }
-#volumeProfileCanvas { flex:1; min-width:0; height:220px; background:#0a0e14; cursor:crosshair; display:block; }
-#volumeProfilePriceAxisCanvas { width:58px; height:220px; flex-shrink:0; background:#0d111a; border-left:1px solid #2a3a4a; cursor:ns-resize; display:block; }
+#volumeProfileCanvas { flex:1; min-width:0; height:460px; background:#0a0e14; cursor:crosshair; display:block; }
+#volumeProfilePriceAxisCanvas { width:58px; height:460px; flex-shrink:0; background:#0d111a; border-left:1px solid #2a3a4a; cursor:ns-resize; display:block; }
 #volumeProfileTooltip { display:none; position:fixed; background:#1a2233; border:1px solid #2a3a4a; border-radius:4px; padding:4px 8px; font-size:10px; font-family:monospace; color:#e6edf3; pointer-events:none; z-index:999; white-space:nowrap; }
 #signalBadge.ms-accumulation { background:rgba(0,200,255,0.15); color:#00ccff; border-color:#00ccff; }
 #signalBadge.ms-distribution { background:rgba(255,100,220,0.15); color:#ff64dc; border-color:#ff64dc; }
@@ -880,7 +880,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
       <span class="ptb-arrow">&#9660;</span>
     </span>
   </div>
-  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:310px;">
+  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:560px;">
     <div class="trend-bar-wrap" id="vpTrendWrap">
       <div class="trend-bar-track">
         <div class="trend-bar-bear" id="vpTrendBear"></div>
@@ -894,7 +894,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
     </div>
     <div id="volumeProfileCanvasRow">
       <canvas id="volumeProfileCanvas"></canvas>
-      <canvas id="volumeProfilePriceAxisCanvas" width="58" height="220"></canvas>
+      <canvas id="volumeProfilePriceAxisCanvas" width="58" height="460"></canvas></canvas>
     </div>
     <div style="font-size:9px;color:#3a5a7a;text-align:center;font-family:monospace;letter-spacing:0.5px;padding:2px 0;">
       &#x2195; Drag price axis = Zoom
@@ -2881,9 +2881,9 @@ function resizeVolumeProfileCanvas() {
   const availW = (rowEl ? rowEl.clientWidth : 800) - AXIS_W;
   const w = Math.max(200, Math.round(availW));
   if (volumeProfileCanvas.width !== w) volumeProfileCanvas.width = w;
-  volumeProfileCanvas.height = 220;
+  volumeProfileCanvas.height = 460;
   vpPriceAxisCanvas.width  = AXIS_W;
-  vpPriceAxisCanvas.height = 220;
+  vpPriceAxisCanvas.height = 460;
 }
 
 
@@ -3003,7 +3003,6 @@ function renderVolumeProfile() {
   const totalVols   = rows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
   const deltas      = rows.map(r => (r.buy_vol || 0) - (r.sell_vol || 0));
   const maxTotalVol = Math.max(1, ...totalVols);
-  const maxAbsDelta = Math.max(1, ...deltas.map(d => Math.abs(d)));
 
   // Find which visible/clustered row (if any) actually represents the true
   // POC, so the bright "POC bar" highlight only lights up when the real
@@ -3102,8 +3101,16 @@ function renderVolumeProfile() {
     }
 
     // ── RIGHT: net delta only, single colour by sign ───────────────────
-    let deltaW = Math.round((Math.abs(delta) / maxAbsDelta) * maxBarWidth);
+    // v97: delta bar now scales against the SAME reference as the volume
+    // bar (maxTotalVol), not its own independent maxAbsDelta. Since
+    // |delta| <= total volume for every row by definition, this guarantees
+    // the delta bar can never render wider than that row's own volume bar
+    // — previously the two sides used unrelated scales, so a row with a
+    // lopsided but modest-volume split could show a delta bar exceeding
+    // its own (much larger) total-volume bar, which made no sense.
+    let deltaW = Math.round((Math.abs(delta) / maxTotalVol) * maxBarWidth);
     if (Math.abs(delta) > 0) deltaW = Math.max(MIN_BAR_PX, deltaW);
+    deltaW = Math.min(deltaW, volBarW); // belt-and-suspenders: never exceed this row's own volume bar
     if (deltaW > 0) {
       ctx.fillStyle = delta >= 0
         ? (isPOC ? '#00ffb4' : '#00d67e')
