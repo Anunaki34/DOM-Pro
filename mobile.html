@@ -679,20 +679,20 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
   <!-- BOOKMAP Controls -->
   <div class="ctrl-group">
     <span class="ctrl-label">BOOKMAP</span>
-    <label>Time Win (min):</label><input type="number" id="bmTimeWindow" value="5" min="0.1" step="0.1" style="width:55px;">
+    <label>Time Win (min):</label><input type="number" id="bmTimeWindow" value="75" min="0.1" step="0.1" style="width:55px;">
     <label>Sec/Px:</label><input type="number" id="bmSecPerPixel" value="2" min="0.1" step="0.1" style="width:50px;">
-    <label>Min Whale:</label><input type="number" id="bmMinWhale" value="3" step="0.1" style="width:55px;">
-    <label>Cluster:</label><input type="number" id="bmClusterSize" value="5" step="1" min="1" style="width:45px;">
+    <label>Min Whale:</label><input type="number" id="bmMinWhale" value="20" step="0.1" style="width:55px;">
+    <label>Cluster:</label><input type="number" id="bmClusterSize" value="658" step="1" min="1" style="width:45px;">
     <label><input type="checkbox" id="bmWhaleHighlight" checked> Whale Highlight</label>
-    <label>Min Vol (Bubbles):</label><input type="number" id="bmBubbleMinVol" value="0.1" min="0" step="0.1" style="width:55px;">
+    <label>Min Vol (Bubbles):</label><input type="number" id="bmBubbleMinVol" value="1" min="0" step="0.1" style="width:55px;">
     <label>Ghost (s):</label><input type="number" id="bmGhostSec" value="30" min="0" step="5" style="width:45px;">
   </div>
   <!-- DOM Controls -->
   <div class="ctrl-group">
     <span class="ctrl-label">DOM</span>
     <button id="modeToggle">Mode: FIXED</button>
-    <label>Depth:</label><input type="number" id="depthInput" value="100">
-    <label><input type="checkbox" id="whaleDomToggle"> Whale Only</label>
+    <label>Depth:</label><input type="number" id="depthInput" value="13700">
+    <label><input type="checkbox" id="whaleDomToggle" checked> Whale Only</label>
     <label><input type="checkbox" id="heatmapToggle" checked> Heatmap</label>
     <label><input type="checkbox" id="imbalanceToggle" checked> Imbalance</label>
     <label>Min Imbal:</label><input type="number" id="imbalanceInput" value="3" step="0.5">
@@ -702,12 +702,12 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
     <span class="ctrl-label">CANDLES</span>
     <label>Interval (min):</label><input type="number" id="candleInterval" value="15" min="1" max="60" step="1" style="width:45px;">
     <label>Visible:</label><input type="number" id="candleVisibleCount" value="4" min="2" max="20" step="1" style="width:40px;">
-    <label>Log Window (min):</label><input type="number" id="fpLogWindow" value="5" step="1" min="1" max="60" style="width:45px;">
+    <label>Log Window (min):</label><input type="number" id="fpLogWindow" value="15" step="1" min="1" max="60" style="width:45px;">
   </div>
   <!-- Delta Controls -->
   <div class="ctrl-group">
     <span class="ctrl-label">Delta</span>
-    <label>Window(s):</label><input type="number" id="deltaWindow" value="60">
+    <label>Window(s):</label><input type="number" id="deltaWindow" value="43200">
     <label>From:</label><input type="number" id="rangeFrom" placeholder="66000">
     <label>To:</label><input type="number" id="rangeTo" placeholder="66500">
     <span id="rangeDelta" style="margin:0 4px;">&#916;: 0</span>
@@ -716,7 +716,7 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
   <!-- OB Pressure Controls -->
   <div class="ctrl-group">
     <span class="ctrl-label">OB Pressure</span>
-    <label>Range:</label><input type="number" id="obRangeInput" value="500" step="100" min="1" style="width:55px;">
+    <label>Range:</label><input type="number" id="obRangeInput" value="3000" step="100" min="1" style="width:55px;">
   </div>
   <!-- Session -->
   <div class="ctrl-group">
@@ -730,10 +730,10 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
 </div>
 
 <div id="deltaPanel">
-  <div class="panel-toggle-bar" onclick="togglePanel('deltaPanel')">
+  <div class="panel-toggle-bar collapsed" onclick="togglePanel('deltaPanel')">
     <span>&#9670; Delta / Dominance</span><span class="ptb-arrow">&#9660;</span>
   </div>
-  <div class="panel-collapsible" id="deltaPanel-body" style="max-height:80px;">
+  <div class="panel-collapsible collapsed" id="deltaPanel-body" style="max-height:80px;">
     <div class="delta" id="deltaBox">Delta: 0</div>
     <div class="delta" id="dominanceBox">Buy: 0% | Sell: 0%</div>
   </div>
@@ -871,10 +871,10 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
       </div>
     </div>
     <div id="candleLogBlock">
-      <div class="panel-toggle-bar" onclick="togglePanel('candleLogBlock')">
+      <div class="panel-toggle-bar collapsed" onclick="togglePanel('candleLogBlock')">
         <span>&#9670; Candle Log</span><span class="ptb-arrow">&#9660;</span>
       </div>
-      <div class="panel-collapsible" id="candleLogBlock-body" style="max-height:200px;">
+      <div class="panel-collapsible collapsed" id="candleLogBlock-body" style="max-height:200px;">
       <div id="fpLogWrap">
         <div id="fpLogHeader">
           <span id="fpLogTitle"><span id="fpLogCountdown"></span>Candle Log</span>
@@ -1036,18 +1036,18 @@ const SYMBOL = "btcusdt";
 const WS_BACKOFF_BASE = 2000, WS_BACKOFF_MAX = 30000, WS_CLEAN_RESET = 60000, MAX_SEQ_GAP = 5;
 
 // ── STATE ────────────────────────────────────────────────────────────────
-let BASE_DEPTH = 100, DEPTH_LEVELS = 100, imbalanceRatio = 3, mode = "FIXED";
+let BASE_DEPTH = 13700, DEPTH_LEVELS = 13700, imbalanceRatio = 3, mode = "FIXED";
 let orderBook = { bids:{}, asks:{} }, lastUpdateId = 0, bookReady = false, depthBuffer = [];
 let expectedNextU = 0, bookSynced = true;
-let priceCenter = null, priceHistory = [], deltaHistory = [], delta = 0, deltaWindowSec = 60;
+let priceCenter = null, priceHistory = [], deltaHistory = [], delta = 0, deltaWindowSec = 43200;
 let tickSize = 0.01, tickDecimals = 2;
 let heatmapData = {}, maxHeat = 1, footprintData = {}, strongZones = {}, maxFootprint = 1, footprintThreshold = 2;
 let lastUpdateTime = Date.now();
 let cvdData = [], cvdInterval = 60000, lastCVDTime = 0, cvdBuyTemp = 0, cvdSellTemp = 0;
-let obRange = 500;
+let obRange = 3000;
 let depthBackoff = WS_BACKOFF_BASE, tradesBackoff = WS_BACKOFF_BASE;
 let plrCycleCount = 0, plrCurrentState = "", plrPendingState = "", plrLastResult = null;
-let fpLog = [], fpLogWindowMs = 5 * 60000, fpPeriodTrades = [], fpPeriodStartTime = Date.now(), fpLogNextTime;
+let fpLog = [], fpLogWindowMs = 15 * 60000, fpPeriodTrades = [], fpPeriodStartTime = Date.now(), fpLogNextTime;
 
 // Candles
 let candleIntervalMin = 15, candleVisibleCount = 4, candles = [], currentCandle = null;
@@ -1058,11 +1058,11 @@ let _deltaFlipTime  = 0;
 const DELTA_GLOW_MS = 2500;
 
 // Bookmap
-let bmTimeWindowSec = 300, bmSecPerPixel = 2, bmClusterSize = 5, bmMinWhale = 3, bmWhaleHighlight = true;
-let bmBubbleMinVol = 0.1, bmGhostSec = 30, bmColumns = [];
+let bmTimeWindowSec = 4500, bmSecPerPixel = 2, bmClusterSize = 658, bmMinWhale = 20, bmWhaleHighlight = true;
+let bmBubbleMinVol = 1, bmGhostSec = 30, bmColumns = [];
 const BM_SLICE_INTERVAL_MS = 1000;
 let activeResting = new Map(), ghostOrders = [], fillTimes = new Map();
-let manualClusterSize = 5, lastEffectiveCluster = 5;
+let manualClusterSize = 658, lastEffectiveCluster = 658;
 const _sliceSmallBids = new Map(), _sliceSmallAsks = new Map(), _sliceWhaleOrders = [];
 const _sliceWhaleBidPrices = new Set(), _sliceWhaleAskPrices = new Set(), _sliceNowActive = new Set();
 
@@ -1076,8 +1076,8 @@ const cvdTooltip = document.getElementById("cvdTooltip"), depthInput = document.
 const deltaBox = document.getElementById("deltaBox"), resetDeltaBtn = document.getElementById("resetDelta");
 const heatmapToggle = document.getElementById("heatmapToggle"), imbalanceToggle = document.getElementById("imbalanceToggle"), modeToggle = document.getElementById("modeToggle");
 let fpLightMode = false; // false = night (warm-blue charcoal), true = day (light)
-let fpClusterOverlay = true; // show/hide bid/ask cluster marker overlay on FP chart
-let showWhaleTable   = true; // show/hide whale orders table panel
+let fpClusterOverlay = false; // show/hide bid/ask cluster marker overlay on FP chart
+let showWhaleTable   = false; // show/hide whale orders table panel
 const connectionAlert = document.getElementById("connectionAlert"), whaleDomToggle = document.getElementById("whaleDomToggle"), dominanceBox = document.getElementById("dominanceBox");
 const fpLogBody = document.getElementById("fpLogBody"), fpLogTimer = document.getElementById("fpLogTimer"), fpLogCountdown = document.getElementById("fpLogCountdown");
 const fpLogClearBtn = document.getElementById("fpLogClear"), fpLogWindowInput = document.getElementById("fpLogWindow");
