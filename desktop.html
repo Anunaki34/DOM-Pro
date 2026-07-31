@@ -585,6 +585,9 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
 .trend-bar-label { display:flex; justify-content:space-between; align-items:baseline; font-family:monospace; margin-top:4px; gap:8px; }
 .trend-bar-verdict { font-size:11px; font-weight:bold; letter-spacing:0.5px; white-space:nowrap; }
 .trend-bar-note { font-size:9px; color:#5a7a9a; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; text-align:right; }
+.pattern-badge { margin-top:5px; font-family:monospace; font-size:10px; font-weight:bold; letter-spacing:0.5px; padding:3px 6px; border-radius:4px; text-align:center; }
+.pattern-badge.reversal { color:#ffa53c; background:rgba(255,165,60,0.12); border:1px solid #ffa53c; }
+.pattern-badge.continuation { color:#3ab7ff; background:rgba(58,183,255,0.12); border:1px solid #3ab7ff; }
 
 /* ── Bookmap iceberg / spoofing / fakeout alert strip ─────────────────── */
 #bmAlertWrap { padding:5px 8px 6px; border-bottom:1px solid #1e2a3a; background:#0b0f16; display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -784,7 +787,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
         </span>
         <span class="ptb-arrow">&#9660;</span>
       </div>
-      <div class="panel-collapsible" id="candlestickBlock-body" style="max-height:570px;display:flex;flex-direction:column;">
+      <div class="panel-collapsible" id="candlestickBlock-body" style="max-height:610px;display:flex;flex-direction:column;">
         <div class="trend-bar-wrap" id="fpTrendWrap">
           <div class="trend-bar-track">
             <div class="trend-bar-bear" id="fpTrendBear"></div>
@@ -795,6 +798,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
             <span class="trend-bar-verdict" id="fpTrendVerdict">&#8212; SCANNING &#8212;</span>
             <span class="trend-bar-note" id="fpTrendNote"></span>
           </div>
+          <div class="pattern-badge" id="fpPatternBadge" style="display:none;"></div>
         </div>
         <div id="timeRangeBar">
           <label>From:</label>
@@ -846,7 +850,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
       <span class="ptb-arrow">&#9660;</span>
     </span>
   </div>
-  <div class="panel-collapsible" id="cvdWrap-body" style="max-height:290px;">
+  <div class="panel-collapsible" id="cvdWrap-body" style="max-height:330px;">
     <div class="trend-bar-wrap" id="cvdTrendWrap">
       <div class="trend-bar-track">
         <div class="trend-bar-bear" id="cvdTrendBear"></div>
@@ -857,6 +861,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
         <span class="trend-bar-verdict" id="cvdTrendVerdict">&#8212; SCANNING &#8212;</span>
         <span class="trend-bar-note" id="cvdTrendNote"></span>
       </div>
+      <div class="pattern-badge" id="cvdPatternBadge" style="display:none;"></div>
     </div>
     <div id="cvdHistogram">
       <canvas id="cvdCanvas"></canvas>
@@ -880,7 +885,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
       <span class="ptb-arrow">&#9660;</span>
     </span>
   </div>
-  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:560px;">
+  <div class="panel-collapsible" id="volumeProfileWrap-body" style="max-height:600px;">
     <div class="trend-bar-wrap" id="vpTrendWrap">
       <div class="trend-bar-track">
         <div class="trend-bar-bear" id="vpTrendBear"></div>
@@ -891,6 +896,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
         <span class="trend-bar-verdict" id="vpTrendVerdict">&#8212; SCANNING &#8212;</span>
         <span class="trend-bar-note" id="vpTrendNote"></span>
       </div>
+      <div class="pattern-badge" id="vpPatternBadge" style="display:none;"></div>
     </div>
     <div id="volumeProfileCanvasRow">
       <canvas id="volumeProfileCanvas"></canvas>
@@ -3612,11 +3618,62 @@ function evalFootprint() {
 
 // Shared renderer: paints the bidirectional bull/bear bar + verdict text
 // for a given panel prefix ('fp' | 'cvd' | 'vp'), given {score,label,note}.
+// v99: reversal/continuation badges are "sticky" — once a panel flags a
+// pattern, it stays displayed across render ticks even if that exact
+// frame's fresh signal count dips back under threshold, and only clears
+// when genuinely invalidated: the panel's own score flips hard to the
+// opposite extreme, a fresh detection of a *different* pattern/direction
+// replaces it, or it's gone stale (15+ min with neither reconfirmation
+// nor invalidation — a fallback so a badge can't linger forever).
+const _patternState = { fp: null, cvd: null, vp: null };
+const PATTERN_STALE_MS = 15 * 60000;
+
+function resolveStickyPattern(prefix, result) {
+  const now = Date.now();
+  const freshDir = result.score > 0 ? 'bull' : result.score < 0 ? 'bear' : null;
+  const sticky = _patternState[prefix];
+
+  // Fresh, non-null detection this tick — (re)confirm or replace the sticky state
+  if (result.pattern && freshDir) {
+    if (!sticky || sticky.pattern !== result.pattern || sticky.dir !== freshDir) {
+      _patternState[prefix] = { pattern: result.pattern, dir: freshDir, note: result.note, since: now, lastSeen: now };
+    } else {
+      sticky.lastSeen = now;
+      sticky.note = result.note;
+    }
+    return _patternState[prefix];
+  }
+
+  // No fresh detection this tick — keep the sticky state unless invalidated
+  if (sticky) {
+    const invalidated =
+      (sticky.dir === 'bull' && result.label === 'BEARISH') ||
+      (sticky.dir === 'bear' && result.label === 'BULLISH');
+    const stale = (now - sticky.lastSeen) > PATTERN_STALE_MS;
+    if (invalidated || stale) { _patternState[prefix] = null; return null; }
+    return sticky;
+  }
+  return null;
+}
+
+// Fires the alert tone exactly once per NEW sticky reversal instance
+// (identified by its "since" timestamp) — not on a timer, since the
+// sticky state itself is the de-dupe mechanism.
+const _patternAlertFired = {};
+function notifyPatternAlert(prefix, sticky) {
+  if (!sticky || sticky.pattern !== 'reversal') { delete _patternAlertFired[prefix]; return; }
+  if (_patternAlertFired[prefix] !== sticky.since) {
+    _patternAlertFired[prefix] = sticky.since;
+    if (!bmAlertMuteToggle || !bmAlertMuteToggle.checked) playTaAlert(sticky.dir === 'bull' ? 'long' : 'short');
+  }
+}
+
 function updateTrendBarUI(prefix, result) {
   const bull   = document.getElementById(prefix + 'TrendBull');
   const bear   = document.getElementById(prefix + 'TrendBear');
   const verdict = document.getElementById(prefix + 'TrendVerdict');
   const note   = document.getElementById(prefix + 'TrendNote');
+  const badge  = document.getElementById(prefix + 'PatternBadge');
   if (!bull || !bear || !verdict) return;
   const s = Math.max(-100, Math.min(100, result.score || 0));
   bull.style.width = Math.max(0, s) / 2 + '%';
@@ -3629,6 +3686,23 @@ function updateTrendBarUI(prefix, result) {
   verdict.textContent = result.label + ' (' + (s > 0 ? '+' : '') + s.toFixed(0) + ')';
   verdict.style.color = col;
   if (note) note.textContent = result.note || '';
+
+  const sticky = resolveStickyPattern(prefix, result);
+  if (badge) {
+    if (sticky && sticky.pattern === 'reversal') {
+      badge.style.display = 'block';
+      badge.className = 'pattern-badge reversal blinking';
+      badge.textContent = '\u27F2 POSSIBLE REVERSAL \u2014 ' + (sticky.dir === 'bull' ? 'bullish' : 'bearish');
+    } else if (sticky && sticky.pattern === 'continuation') {
+      badge.style.display = 'block';
+      badge.className = 'pattern-badge continuation';
+      badge.textContent = '\u2192 CONTINUATION \u2014 ' + (sticky.dir === 'bull' ? 'bullish' : 'bearish');
+    } else {
+      badge.style.display = 'none';
+      badge.className = 'pattern-badge';
+    }
+  }
+  notifyPatternAlert(prefix, sticky);
 }
 
 function scoreToVerdict(bull, bear, mult) {
@@ -3649,9 +3723,14 @@ function scoreToVerdict(bull, bear, mult) {
 // extreme candles in view.
 function evalFpPanelTrend() {
   const cs = (fpVisibleCandles || []).filter(c => c && c.open !== 0 && c.high !== 0);
-  if (cs.length < 2) return { score: 0, label: 'WAITING', note: 'not enough candles in view' };
+  if (cs.length < 2) return { score: 0, label: 'WAITING', note: 'not enough candles in view', pattern: null };
 
   let bull = 0, bear = 0;
+  // v98: separate reversal-flavored vs continuation-flavored signal counts,
+  // tallied alongside (not instead of) the existing bull/bear score, so the
+  // trend bar can also flag "this looks like a possible reversal" or
+  // "this looks like continuation" without a second scoring pass.
+  let reversalSignals = 0, continuationSignals = 0;
   const notes = [];
 
   // 1) Directional structure: net move across the view + HH/HL vs LH/LL swings
@@ -3667,8 +3746,8 @@ function evalFpPanelTrend() {
     if (cs[i].high > cs[i - 1].high) hh++; else if (cs[i].high < cs[i - 1].high) lh++;
     if (cs[i].low > cs[i - 1].low) hl++; else if (cs[i].low < cs[i - 1].low) ll++;
   }
-  if (hh > lh && hl > ll) { bull += 1; notes.push('HH/HL structure'); }
-  else if (lh > hh && ll > hl) { bear += 1; notes.push('LH/LL structure'); }
+  if (hh > lh && hl > ll) { bull += 1; continuationSignals += 1; notes.push('HH/HL structure'); }
+  else if (lh > hh && ll > hl) { bear += 1; continuationSignals += 1; notes.push('LH/LL structure'); }
 
   // 2) Delta breadth across EVERY visible candle (not just the extremes) —
   // same "how many lean which way" check the CVD eval already does.
@@ -3751,12 +3830,12 @@ function evalFpPanelTrend() {
     const deltaRatio = cTotalVol > 0 ? Math.abs(cDelta) / cTotalVol : 0;
     if (deltaRatio > 0.25 && bodyPct < 0.20) {
       // High effort, tiny result — the aggressive side got absorbed
-      if (cDelta > 0) { bear += 1; notes.push('buyers failed @ ' + formatPrice(c.close)); }
-      else { bull += 1; notes.push('sellers failed @ ' + formatPrice(c.close)); }
+      if (cDelta > 0) { bear += 1; reversalSignals += 1; notes.push('buyers failed @ ' + formatPrice(c.close)); }
+      else { bull += 1; reversalSignals += 1; notes.push('sellers failed @ ' + formatPrice(c.close)); }
     } else if (deltaRatio > 0.35 && bodyPct > 0.50) {
       // High effort AND strong result in the same direction = conviction
-      if (cDelta > 0 && isBullClose) { bull += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
-      else if (cDelta < 0 && !isBullClose) { bear += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
+      if (cDelta > 0 && isBullClose) { bull += 1; continuationSignals += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
+      else if (cDelta < 0 && !isBullClose) { bear += 1; continuationSignals += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
     }
 
     // Sorted price levels (ascending) so we can tell WHERE imbalances sit
@@ -3785,10 +3864,10 @@ function evalFpPanelTrend() {
     // bearish reversal clue). Bid-at-high / ask-at-low read as
     // continuation strength in the move's own direction — real, but
     // weighted a little lighter than the reversal read.
-    if (bidLowThird >= 2) { bull += 2; notes.push('bid imbalance @ low'); }
-    else if (bidHighThird >= 2) { bull += 1; notes.push('bid imbalance @ high'); }
-    if (askHighThird >= 2) { bear += 2; notes.push('ask imbalance @ high'); }
-    else if (askLowThird >= 2) { bear += 1; notes.push('ask imbalance @ low'); }
+    if (bidLowThird >= 2) { bull += 2; reversalSignals += 1; notes.push('bid imbalance @ low'); }
+    else if (bidHighThird >= 2) { bull += 1; continuationSignals += 1; notes.push('bid imbalance @ high'); }
+    if (askHighThird >= 2) { bear += 2; reversalSignals += 1; notes.push('ask imbalance @ high'); }
+    else if (askLowThird >= 2) { bear += 1; continuationSignals += 1; notes.push('ask imbalance @ low'); }
 
     // Stacked run: 3+ consecutive price levels with the same imbalance
     // type is a materially stronger footprint tell than the same count
@@ -3806,18 +3885,22 @@ function evalFpPanelTrend() {
     // sells at the low without further downside = bullish reversal clue.
     if (i === lowestIdx) {
       const tot = c.buyVol + c.sellVol;
-      if (tot > 0 && c.buyVol / tot > 0.6) { bull += 2; notes.push('absorption @ low'); }
+      if (tot > 0 && c.buyVol / tot > 0.6) { bull += 2; reversalSignals += 1; notes.push('absorption @ low'); }
     }
     // Distribution at the highest-high candle in view: heavy selling into
     // the highs without further upside = bearish reversal clue.
     if (i === highestIdx) {
       const tot = c.buyVol + c.sellVol;
-      if (tot > 0 && c.sellVol / tot > 0.6) { bear += 2; notes.push('distribution @ high'); }
+      if (tot > 0 && c.sellVol / tot > 0.6) { bear += 2; reversalSignals += 1; notes.push('distribution @ high'); }
     }
   });
 
+  let pattern = null;
+  if (reversalSignals >= 2 && reversalSignals > continuationSignals) pattern = 'reversal';
+  else if (continuationSignals >= 2 && continuationSignals > reversalSignals) pattern = 'continuation';
+
   const v = scoreToVerdict(bull, bear, 12);
-  return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014' };
+  return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014', pattern };
 }
 
 // ── CVD panel trend ───────────────────────────────────────────────────────
@@ -3830,9 +3913,10 @@ function evalFpPanelTrend() {
 // delta are folded in on top as fast-reacting confirmation, not replaced.
 function evalCvdPanelTrend() {
   const bars = cvdVisibleBars || [];
-  if (bars.length < 3) return { score: 0, label: 'WAITING', note: 'not enough bars in view' };
+  if (bars.length < 3) return { score: 0, label: 'WAITING', note: 'not enough bars in view', pattern: null };
 
   let bull = 0, bear = 0;
+  let reversalSignals = 0, continuationSignals = 0;
   const notes = [];
 
   // 1) Net cumulative delta across the WHOLE visible window (macro bias)
@@ -3870,8 +3954,8 @@ function evalCvdPanelTrend() {
   let cum = 0; const cumSeries = deltas.map(d => (cum += d));
   const cvdMove = cumSeries[cumSeries.length - 1] - cumSeries[0];
   const priceRange = Math.max(...bars.map(b => b.high)) - Math.min(...bars.map(b => b.low)) || (tickSize || 1);
-  if (priceMove < -priceRange * 0.15 && cvdMove > macroThresh) { bull += 2; notes.push('bullish divergence vs price'); }
-  else if (priceMove > priceRange * 0.15 && cvdMove < -macroThresh) { bear += 2; notes.push('bearish divergence vs price'); }
+  if (priceMove < -priceRange * 0.15 && cvdMove > macroThresh) { bull += 2; reversalSignals += 1; notes.push('bullish divergence vs price'); }
+  else if (priceMove > priceRange * 0.15 && cvdMove < -macroThresh) { bear += 2; reversalSignals += 1; notes.push('bearish divergence vs price'); }
 
   // 3b) Swing-point divergence — not just the whole-window net move, but
   // the classic footprint-trader tell: a new price swing high that ISN'T
@@ -3890,11 +3974,11 @@ function evalCvdPanelTrend() {
   const swingLows  = findSwingPoints(bars.map(b => b.low), false);
   if (swingHighs.length >= 2) {
     const a = swingHighs[swingHighs.length - 2], b = swingHighs[swingHighs.length - 1];
-    if (b.v > a.v && cumSeries[b.i] < cumSeries[a.i]) { bear += 2; notes.push('swing-high divergence'); }
+    if (b.v > a.v && cumSeries[b.i] < cumSeries[a.i]) { bear += 2; reversalSignals += 1; notes.push('swing-high divergence'); }
   }
   if (swingLows.length >= 2) {
     const a = swingLows[swingLows.length - 2], b = swingLows[swingLows.length - 1];
-    if (b.v < a.v && cumSeries[b.i] > cumSeries[a.i]) { bull += 2; notes.push('swing-low divergence'); }
+    if (b.v < a.v && cumSeries[b.i] > cumSeries[a.i]) { bull += 2; reversalSignals += 1; notes.push('swing-low divergence'); }
   }
 
   // 4) Shape of the cumulative CVD line itself — swing structure (rising
@@ -3906,9 +3990,9 @@ function evalCvdPanelTrend() {
   for (let i = 1; i < cvdPeaks.length; i++) { if (cvdPeaks[i] > cvdPeaks[i - 1]) risingPeaks++; else if (cvdPeaks[i] < cvdPeaks[i - 1]) fallingPeaks++; }
   for (let i = 1; i < cvdTroughs.length; i++) { if (cvdTroughs[i] > cvdTroughs[i - 1]) risingTroughs++; else if (cvdTroughs[i] < cvdTroughs[i - 1]) fallingTroughs++; }
   if (risingPeaks >= fallingPeaks && risingTroughs > fallingTroughs && (cvdPeaks.length > 1 || cvdTroughs.length > 1)) {
-    bull += 1; notes.push('CVD line HH/HL');
+    bull += 1; continuationSignals += 1; notes.push('CVD line HH/HL');
   } else if (fallingPeaks >= risingPeaks && fallingTroughs > risingTroughs && (cvdPeaks.length > 1 || cvdTroughs.length > 1)) {
-    bear += 1; notes.push('CVD line LH/LL');
+    bear += 1; continuationSignals += 1; notes.push('CVD line LH/LL');
   }
 
   // 5) Slope acceleration/deceleration — is the delta building steam in the
@@ -3919,8 +4003,8 @@ function evalCvdPanelTrend() {
   const firstHalfAvg = deltas.slice(0, halfIdx).reduce((a, b) => a + b, 0) / halfIdx;
   const secondHalfAvg = deltas.slice(halfIdx).reduce((a, b) => a + b, 0) / (bars.length - halfIdx || 1);
   if (secondHalfAvg !== 0 && Math.sign(secondHalfAvg) === Math.sign(firstHalfAvg) && Math.abs(secondHalfAvg) > Math.abs(firstHalfAvg) * 1.4) {
-    if (secondHalfAvg > 0) { bull += 1; notes.push('CVD accelerating up'); }
-    else { bear += 1; notes.push('CVD accelerating down'); }
+    if (secondHalfAvg > 0) { bull += 1; continuationSignals += 1; notes.push('CVD accelerating up'); }
+    else { bear += 1; continuationSignals += 1; notes.push('CVD accelerating down'); }
   } else if (Math.abs(secondHalfAvg) < Math.abs(firstHalfAvg) * 0.6) {
     notes.push('CVD decelerating');
   }
@@ -3935,8 +4019,8 @@ function evalCvdPanelTrend() {
     if (curSign === 1) maxBuyRun = Math.max(maxBuyRun, runLen);
     if (curSign === -1) maxSellRun = Math.max(maxSellRun, runLen);
   });
-  if (maxBuyRun >= 4) { bull += 1; notes.push(maxBuyRun + '-bar buy streak'); }
-  if (maxSellRun >= 4) { bear += 1; notes.push(maxSellRun + '-bar sell streak'); }
+  if (maxBuyRun >= 4) { bull += 1; continuationSignals += 1; notes.push(maxBuyRun + '-bar buy streak'); }
+  if (maxSellRun >= 4) { bear += 1; continuationSignals += 1; notes.push(maxSellRun + '-bar sell streak'); }
 
   // 6b) Hourly breakdown — the same :00 boundary segments the panel prints
   // a net-delta figure at (the dashed vertical separators + "+2.3k"/"-1.1k"
@@ -3953,8 +4037,8 @@ function evalCvdPanelTrend() {
   if (hourGroups.length >= 2) {
     const hourNets = hourGroups.map(g => g.reduce((s, c) => s + (c.buyVol - c.sellVol), 0));
     const posHours = hourNets.filter(v => v > 0).length, negHours = hourNets.filter(v => v < 0).length;
-    if (posHours > negHours * 1.5) { bull += 1; notes.push(posHours + '/' + hourNets.length + ' hours net buy'); }
-    else if (negHours > posHours * 1.5) { bear += 1; notes.push(negHours + '/' + hourNets.length + ' hours net sell'); }
+    if (posHours > negHours * 1.5) { bull += 1; continuationSignals += 1; notes.push(posHours + '/' + hourNets.length + ' hours net buy'); }
+    else if (negHours > posHours * 1.5) { bear += 1; continuationSignals += 1; notes.push(negHours + '/' + hourNets.length + ' hours net sell'); }
     const lastHourNet = hourNets[hourNets.length - 1];
     if (Math.abs(lastHourNet) > avgAbs * 2) {
       if (lastHourNet > 0) { bull += 1; notes.push('latest hour strong buy'); }
@@ -3980,7 +4064,10 @@ function evalCvdPanelTrend() {
   }
 
   const v = scoreToVerdict(bull, bear, 9);
-  return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014' };
+  let pattern = null;
+  if (reversalSignals >= 2 && reversalSignals > continuationSignals) pattern = 'reversal';
+  else if (continuationSignals >= 2 && continuationSignals > reversalSignals) pattern = 'continuation';
+  return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014', pattern };
 }
 
 // ── Volume Profile panel trend ───────────────────────────────────────────
@@ -3993,8 +4080,9 @@ function evalCvdPanelTrend() {
 // panel. Zooming changes what you're LOOKING at; it doesn't change what
 // the data IS, so the evaluation doesn't change either.
 function evalVpPanelTrend() {
-  if (!volumeProfileData.length || !priceCenter) return { score: 0, label: 'WAITING', note: 'no data yet' };
+  if (!volumeProfileData.length || !priceCenter) return { score: 0, label: 'WAITING', note: 'no data yet', pattern: null };
   const rows = volumeProfileData; // sorted price descending
+  let reversalSignals = 0, continuationSignals = 0;
 
   const totalVols = rows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
   let pocIdx = 0;
@@ -4054,16 +4142,16 @@ function evalVpPanelTrend() {
     const r = rows[vahRowIdx], t = (r.buy_vol || 0) + (r.sell_vol || 0);
     if (t > 0) {
       const ratio = (r.buy_vol || 0) / t;
-      if (ratio < 0.42) { bear += 1; notes.push('VAH holding (sell-heavy)'); }
-      else if (ratio > 0.58) { bull += 1; notes.push('VAH absorbed (buy-heavy)'); }
+      if (ratio < 0.42) { bear += 1; continuationSignals += 1; notes.push('VAH holding (sell-heavy)'); }
+      else if (ratio > 0.58) { bull += 1; reversalSignals += 1; notes.push('VAH absorbed (buy-heavy)'); }
     }
   }
   if (valRowIdx >= 0) {
     const r = rows[valRowIdx], t = (r.buy_vol || 0) + (r.sell_vol || 0);
     if (t > 0) {
       const ratio = (r.buy_vol || 0) / t;
-      if (ratio > 0.58) { bull += 1; notes.push('VAL holding (buy-heavy)'); }
-      else if (ratio < 0.42) { bear += 1; notes.push('VAL breaking (sell-heavy)'); }
+      if (ratio > 0.58) { bull += 1; continuationSignals += 1; notes.push('VAL holding (buy-heavy)'); }
+      else if (ratio < 0.42) { bear += 1; reversalSignals += 1; notes.push('VAL breaking (sell-heavy)'); }
     }
   }
 
@@ -4095,8 +4183,8 @@ function evalVpPanelTrend() {
       if ((r.buy_vol || 0) >= (r.sell_vol || 0)) growBuy++; else growSell++;
     }
   });
-  if (growBuy > growSell * 1.5 && growBuy >= 2) { bull += 1; notes.push('growth skew buy'); }
-  else if (growSell > growBuy * 1.5 && growSell >= 2) { bear += 1; notes.push('growth skew sell'); }
+  if (growBuy > growSell * 1.5 && growBuy >= 2) { bull += 1; continuationSignals += 1; notes.push('growth skew buy'); }
+  else if (growSell > growBuy * 1.5 && growSell >= 2) { bear += 1; continuationSignals += 1; notes.push('growth skew sell'); }
 
   // v96: Delta bar MAGNITUDE (the right-side delta bars themselves), not
   // just which way each level leans. One outsized imbalance should count
@@ -4119,7 +4207,10 @@ function evalVpPanelTrend() {
   if (pocDistPct > 0.5) notes.push('extended ' + (pocDistPct * 100).toFixed(0) + '% from POC');
 
   const v = scoreToVerdict(bull, bear, 12);
-  return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014' };
+  let pattern = null;
+  if (reversalSignals >= 2 && reversalSignals > continuationSignals) pattern = 'reversal';
+  else if (continuationSignals >= 2 && continuationSignals > reversalSignals) pattern = 'continuation';
+  return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014', pattern };
 }
 
 const taMinScoreInput     = document.getElementById('taMinScore');
