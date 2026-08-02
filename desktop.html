@@ -588,6 +588,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
 .pattern-badge { margin-top:5px; font-family:monospace; font-size:10px; font-weight:bold; letter-spacing:0.5px; padding:3px 6px; border-radius:4px; text-align:center; }
 .pattern-badge.reversal { color:#ffa53c; background:rgba(255,165,60,0.12); border:1px solid #ffa53c; }
 .pattern-badge.continuation { color:#3ab7ff; background:rgba(58,183,255,0.12); border:1px solid #3ab7ff; }
+.pattern-badge.breakout { border:1px solid #8aaabb; }
 
 /* ── Bookmap iceberg / spoofing / fakeout alert strip ─────────────────── */
 #bmAlertWrap { padding:5px 8px 6px; border-bottom:1px solid #1e2a3a; background:#0b0f16; display:flex; align-items:center; justify-content:space-between; gap:8px; }
@@ -3661,7 +3662,7 @@ function resolveStickyPattern(prefix, result) {
 // sticky state itself is the de-dupe mechanism.
 const _patternAlertFired = {};
 function notifyPatternAlert(prefix, sticky) {
-  if (!sticky || sticky.pattern !== 'reversal') { delete _patternAlertFired[prefix]; return; }
+  if (!sticky || (sticky.pattern !== 'reversal' && sticky.pattern !== 'breakout')) { delete _patternAlertFired[prefix]; return; }
   if (_patternAlertFired[prefix] !== sticky.since) {
     _patternAlertFired[prefix] = sticky.since;
     if (!bmAlertMuteToggle || !bmAlertMuteToggle.checked) playTaAlert(sticky.dir === 'bull' ? 'long' : 'short');
@@ -3692,14 +3693,27 @@ function updateTrendBarUI(prefix, result) {
     if (sticky && sticky.pattern === 'reversal') {
       badge.style.display = 'block';
       badge.className = 'pattern-badge reversal blinking';
+      badge.style.color = ''; badge.style.borderColor = ''; badge.style.background = '';
       badge.textContent = '\u27F2 POSSIBLE REVERSAL \u2014 ' + (sticky.dir === 'bull' ? 'bullish' : 'bearish');
     } else if (sticky && sticky.pattern === 'continuation') {
       badge.style.display = 'block';
       badge.className = 'pattern-badge continuation';
+      badge.style.color = ''; badge.style.borderColor = ''; badge.style.background = '';
       badge.textContent = '\u2192 CONTINUATION \u2014 ' + (sticky.dir === 'bull' ? 'bullish' : 'bearish');
+    } else if (sticky && sticky.pattern === 'breakout') {
+      // v100: coiled-spring breakout/breakdown — bright, direction-colored,
+      // blinking like reversal since it's just as (if not more) actionable.
+      const bo = sticky.dir === 'bull';
+      badge.style.display = 'block';
+      badge.className = 'pattern-badge breakout blinking';
+      badge.style.color = bo ? '#00ffb4' : '#ff6a6a';
+      badge.style.borderColor = bo ? '#00ffb4' : '#ff6a6a';
+      badge.style.background = bo ? 'rgba(0,255,180,0.12)' : 'rgba(255,106,106,0.12)';
+      badge.textContent = '\u26A1 ' + (bo ? 'BREAKOUT WATCH \u2014 wall cleared' : 'BREAKDOWN WATCH \u2014 wall cleared');
     } else {
       badge.style.display = 'none';
       badge.className = 'pattern-badge';
+      badge.style.color = ''; badge.style.borderColor = ''; badge.style.background = '';
     }
   }
   notifyPatternAlert(prefix, sticky);
@@ -3895,8 +3909,48 @@ function evalFpPanelTrend() {
     }
   });
 
+  // v100: "coiled spring" breakout/breakdown detector. User-observed
+  // pattern: FP candles staying squeezed (tight combined range) despite
+  // real volume passing through them, and THEN a heavy bid/ask wall on the
+  // Bookmap genuinely clearing (not spoofed — actually traded through) is
+  // what precedes an actual breakout/breakdown. This is a rarer, more
+  // specific, compound signal, so when it fires it takes priority over the
+  // reversal/continuation read below rather than just adding a point or two.
+  let breakoutSignal = null; // 'bull' | 'bear' | null
+  {
+    const rangeTotal = Math.max(...cs.map(c => c.high)) - Math.min(...cs.map(c => c.low));
+    const volTotal = cs.reduce((s, c) => s + c.buyVol + c.sellVol, 0);
+    // "Squeezed under volume": the combined range across every visible
+    // candle is barely more than one average candle's range, despite real
+    // volume having traded through them — effort without expansion.
+    const isSqueezed = volTotal > 0 && rangeTotal <= avgRange * 1.6;
+
+    if (isSqueezed) {
+      const now = Date.now();
+      const recentClearedWalls = (ghostOrders || []).filter(g =>
+        g.isWhale &&
+        (now - g.endTime) < 90000 &&
+        fillTimes.has(g.priceKey) && fillTimes.get(g.priceKey) <= g.endTime
+      );
+      const askCleared = recentClearedWalls.some(g => g.side === 'ask');
+      const bidCleared = recentClearedWalls.some(g => g.side === 'bid');
+      if (askCleared && !bidCleared) {
+        breakoutSignal = 'bull'; bull += 3;
+        notes.push('squeeze + ask wall cleared');
+      } else if (bidCleared && !askCleared) {
+        breakoutSignal = 'bear'; bear += 3;
+        notes.push('squeeze + bid wall cleared');
+      } else if (askCleared && bidCleared) {
+        notes.push('squeeze + walls clearing both sides');
+      } else {
+        notes.push('coiled \u2014 watching for a wall to clear');
+      }
+    }
+  }
+
   let pattern = null;
-  if (reversalSignals >= 2 && reversalSignals > continuationSignals) pattern = 'reversal';
+  if (breakoutSignal) pattern = 'breakout';
+  else if (reversalSignals >= 2 && reversalSignals > continuationSignals) pattern = 'reversal';
   else if (continuationSignals >= 2 && continuationSignals > reversalSignals) pattern = 'continuation';
 
   const v = scoreToVerdict(bull, bear, 12);
