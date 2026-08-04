@@ -3170,6 +3170,12 @@ function renderVolumeProfile() {
   drawVpRefLine(vahPrice, 'rgba(140,170,255,0.95)', [5, 3], 'VAH ' + vahPrice.toFixed(tickDecimals), 'rgba(20,26,40,0.94)');
   drawVpRefLine(valPrice, 'rgba(140,170,255,0.95)', [5, 3], 'VAL ' + valPrice.toFixed(tickDecimals), 'rgba(20,26,40,0.94)');
   drawVpRefLine(pocPrice, 'rgba(255,210,60,0.95)', [2, 2], 'POC ' + pocPrice.toFixed(tickDecimals), 'rgba(40,32,10,0.94)');
+  // v102: current price marker — same bright-yellow treatment as the FP
+  // panel's price axis, drawn last so it's always the most prominent line
+  // on screen and tracks priceCenter live every frame.
+  if (priceCenter !== null) {
+    drawVpRefLine(priceCenter, '#ffff00', null, 'NOW ' + priceCenter.toFixed(tickDecimals), 'rgba(50,50,0,0.94)');
+  }
 
   // ── Dedicated price axis, same tick logic/style as renderPriceAxis ────
   const rawStep = priceSpan / 8;
@@ -3206,6 +3212,26 @@ function renderVolumeProfile() {
     axisCtx.lineWidth = 2;
     axisCtx.beginPath(); axisCtx.moveTo(0, y); axisCtx.lineTo(10, y); axisCtx.stroke();
   });
+
+  // v102: current price marker on the axis — same badge treatment as the
+  // FP panel's price axis (renderPriceAxis), tracks priceCenter live.
+  if (priceCenter !== null && priceCenter >= low && priceCenter <= high) {
+    const curY = priceToY(priceCenter);
+    const label = priceCenter.toFixed(tickDecimals);
+    const badgeH = 14, badgePad = 4;
+    axisCtx.font = 'bold 9px monospace';
+    const labelW = axisCtx.measureText(label).width;
+    const badgeW = labelW + badgePad * 2;
+    const badgeY = Math.max(0, Math.min(H - badgeH, curY - badgeH / 2));
+    axisCtx.fillStyle = '#ffff00';
+    axisCtx.fillRect(0, curY - 1, AW, 2);
+    axisCtx.fillStyle = '#ffff00';
+    axisCtx.fillRect(0, badgeY, badgeW + 4, badgeH);
+    axisCtx.fillStyle = '#000000';
+    axisCtx.textAlign = 'left';
+    axisCtx.fillText(label, badgePad, badgeY + badgeH - 3);
+  }
+
   updateTrendBarUI('vp', evalVpPanelTrend());
 }
 
