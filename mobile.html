@@ -751,7 +751,7 @@ input[type="checkbox"] { width:15px; height:15px; vertical-align:middle; }
     </div>
     <div class="panel-collapsible" id="obPressureWrap-body" style="max-height:300px;">
       <div id="obPressurePanel">
-        <div class="ob-title">Order Book Pressure &nbsp;|&nbsp;<span id="obRangeLabel" style="font-size:9px;color:#7a8a9a;">Range: <span id="obRangeDisplay">500</span> &#177;</span></div>
+        <div class="ob-title">Order Book Pressure &nbsp;|&nbsp;<span id="obRangeLabel" style="font-size:9px;color:#7a8a9a;">Range: <span id="obRangeDisplay">3000</span> &#177;</span></div>
         <div class="ob-row">
           <span id="obBidLabel" style="color:#00ff88;">BID</span>
           <span id="obBidSize"  style="color:#00ff88;">&mdash;</span>
@@ -1051,7 +1051,8 @@ let tickSize = 0.01, tickDecimals = 2;
 let heatmapData = {}, maxHeat = 1, footprintData = {}, strongZones = {}, maxFootprint = 1, footprintThreshold = 2;
 let lastUpdateTime = Date.now();
 let cvdData = [], cvdInterval = 60000, lastCVDTime = 0, cvdBuyTemp = 0, cvdSellTemp = 0;
-let obRange = 3000;
+const OB_RANGE_DEFAULT = 3000;
+let obRange = OB_RANGE_DEFAULT;
 let depthBackoff = WS_BACKOFF_BASE, tradesBackoff = WS_BACKOFF_BASE;
 let plrCycleCount = 0, plrCurrentState = "", plrPendingState = "", plrLastResult = null;
 let fpLog = [], fpLogWindowMs = 15 * 60000, fpPeriodTrades = [], fpPeriodStartTime = Date.now(), fpLogNextTime;
@@ -1910,7 +1911,7 @@ function renderFpMarkers(ctx, w, h, minPrice, maxPrice, yScale) {
   function priceY(p) { return h - ((p - minPrice) * yScale); }
   function levelOpacity(price) {
     const dist = Math.abs(price - priceCenter);
-    const half = (obRange || 500) / 2;
+    const half = (obRange || OB_RANGE_DEFAULT) / 2;
     if (dist <= half)           return 1.0;
     if (dist > half * 3)        return 0.0;
     return 1.0 - (dist - half) / (half * 2);
@@ -1964,7 +1965,7 @@ function renderFpMarkers(ctx, w, h, minPrice, maxPrice, yScale) {
     });
   }
 
-  const halfO = (obRange || 500) / 2,
+  const halfO = (obRange || OB_RANGE_DEFAULT) / 2,
         lo    = priceCenter - halfO,
         hi    = priceCenter + halfO;
 
@@ -2939,6 +2940,12 @@ const VP_AUTO_REFRESH_MS = 20000; // v88: periodic auto-refetch, was manual-only
 let vpPrevTotals = new Map();   // price-key -> total volume, as of the previous fetch
 let vpGrowGlow   = new Map();   // price-key -> timestamp when growth was last detected
 const VP_GLOW_DURATION_MS = 1600;
+// v102: POC/VAH/VAL "behavior over time" — VP has no discrete candles like
+// FP does, so instead of candle-to-candle migration this compares the
+// current structure to a snapshot taken at least VP_SNAPSHOT_MIN_AGE_MS
+// ago, refreshed no more often than that same interval.
+let vpPrevSnapshot = null; // { pocPrice, vah, val, pocDominance, ts }
+const VP_SNAPSHOT_MIN_AGE_MS = 15000;
 let vpGlowAnimTimer = null;
 async function fetchVolumeProfile() {
   if (vpFetchInFlight) return; // don't stack overlapping requests if one's slow
@@ -3913,31 +3920,31 @@ function evalFpPanelTrend() {
   // trend bar can also flag "this looks like a possible reversal" or
   // "this looks like continuation" without a second scoring pass.
   let reversalSignals = 0, continuationSignals = 0;
-  const notes = [];
+  const ofNotes = [], genNotes = [];
 
   // 1) Directional structure: net move across the view + HH/HL vs LH/LL swings
   const first = cs[0], last = cs[cs.length - 1];
   const avgRange = cs.reduce((s, c) => s + (c.high - c.low), 0) / cs.length || (tickSize || 1);
   const netMove = last.close - first.open;
-  if (netMove > avgRange * 0.3) { bull += 2; notes.push('trend up'); }
-  else if (netMove < -avgRange * 0.3) { bear += 2; notes.push('trend down'); }
-  else notes.push('range-bound');
+  if (netMove > avgRange * 0.3) { bull += 2; genNotes.push('trend up'); }
+  else if (netMove < -avgRange * 0.3) { bear += 2; genNotes.push('trend down'); }
+  else genNotes.push('range-bound');
 
   let hh = 0, hl = 0, lh = 0, ll = 0;
   for (let i = 1; i < cs.length; i++) {
     if (cs[i].high > cs[i - 1].high) hh++; else if (cs[i].high < cs[i - 1].high) lh++;
     if (cs[i].low > cs[i - 1].low) hl++; else if (cs[i].low < cs[i - 1].low) ll++;
   }
-  if (hh > lh && hl > ll) { bull += 1; continuationSignals += 1; notes.push('HH/HL structure'); }
-  else if (lh > hh && ll > hl) { bear += 1; continuationSignals += 1; notes.push('LH/LL structure'); }
+  if (hh > lh && hl > ll) { bull += 1; continuationSignals += 1; genNotes.push('HH/HL structure'); }
+  else if (lh > hh && ll > hl) { bear += 1; continuationSignals += 1; genNotes.push('LH/LL structure'); }
 
   // 2) Delta breadth across EVERY visible candle (not just the extremes) —
   // same "how many lean which way" check the CVD eval already does.
   const candleDeltas = cs.map(c => c.buyVol - c.sellVol);
   const buyCandles = candleDeltas.filter(d => d > 0).length;
   const sellCandles = candleDeltas.filter(d => d < 0).length;
-  if (buyCandles > sellCandles * 1.5) { bull += 1; notes.push(buyCandles + '/' + cs.length + ' candles buy-leaning'); }
-  else if (sellCandles > buyCandles * 1.5) { bear += 1; notes.push(sellCandles + '/' + cs.length + ' candles sell-leaning'); }
+  if (buyCandles > sellCandles * 1.5) { bull += 1; ofNotes.push(buyCandles + '/' + cs.length + ' candles buy-leaning'); }
+  else if (sellCandles > buyCandles * 1.5) { bear += 1; ofNotes.push(sellCandles + '/' + cs.length + ' candles sell-leaning'); }
 
   // 3) Wick/rejection geometry across the view: a long lower wick rejects
   // lower prices (bullish), a long upper wick rejects higher prices
@@ -3950,8 +3957,8 @@ function evalFpPanelTrend() {
     if ((bodyBot - c.low) / range > 0.4) lowerWickCount++;
     if ((c.high - bodyTop) / range > 0.4) upperWickCount++;
   });
-  if (lowerWickCount > upperWickCount) { bull += 1; notes.push(lowerWickCount + ' lower-wick rejection' + (lowerWickCount > 1 ? 's' : '')); }
-  else if (upperWickCount > lowerWickCount) { bear += 1; notes.push(upperWickCount + ' upper-wick rejection' + (upperWickCount > 1 ? 's' : '')); }
+  if (lowerWickCount > upperWickCount) { bull += 1; genNotes.push(lowerWickCount + ' lower-wick rejection' + (lowerWickCount > 1 ? 's' : '')); }
+  else if (upperWickCount > lowerWickCount) { bear += 1; genNotes.push(upperWickCount + ' upper-wick rejection' + (upperWickCount > 1 ? 's' : '')); }
 
   // 4) Body-to-range conviction on the most recent candle — a large body
   // relative to its range shows real conviction; a tiny body is indecision.
@@ -3959,10 +3966,10 @@ function evalFpPanelTrend() {
   const lastBody = Math.abs(last.close - last.open);
   const convictionRatio = lastBody / lastRange;
   if (convictionRatio > 0.6) {
-    if (last.close >= last.open) { bull += 1; notes.push('strong bull candle'); }
-    else { bear += 1; notes.push('strong bear candle'); }
+    if (last.close >= last.open) { bull += 1; genNotes.push('strong bull candle'); }
+    else { bear += 1; genNotes.push('strong bear candle'); }
   } else if (convictionRatio < 0.25) {
-    notes.push('indecision (small body)');
+    genNotes.push('indecision (small body)');
   }
 
   // 5) Volume trend across the view — informational only (a volume climax
@@ -3971,21 +3978,65 @@ function evalFpPanelTrend() {
   const half = Math.floor(vols.length / 2) || 1;
   const avgFirst = vols.slice(0, half).reduce((a, b) => a + b, 0) / half;
   const avgSecond = vols.slice(half).reduce((a, b) => a + b, 0) / (vols.length - half || 1);
-  if (avgSecond > avgFirst * 1.4) notes.push('volume rising (climax risk)');
-  else if (avgSecond < avgFirst * 0.6) notes.push('volume fading');
+  if (avgSecond > avgFirst * 1.4) genNotes.push('volume rising (climax risk)');
+  else if (avgSecond < avgFirst * 0.6) genNotes.push('volume fading');
 
-  // 6) Per-candle POC location, imbalance LOCATION + stacked runs, plus
-  //    absorption/distribution on the extreme (lowest-low / highest-high)
-  //    candle in view.
+  // 6) Per-candle order-flow read — the actual questions an order-flow
+  //    trader asks of each candle, not just "did it close up or down":
+  //      - POC position AND behavior (migrating vs. pinned across candles)
+  //      - imbalance location + stacked runs
+  //      - ABSORPTION: the stacked imbalance disagreeing with the candle's
+  //        own close direction — passive size stepped in and stopped the
+  //        move even though price nominally closed the other way. Checked
+  //        on EVERY visible candle now, not just the window's high/low.
+  //      - EXHAUSTION: the trend's OWN aggressor fading candle-over-candle
+  //        (less delta AND less range than the prior candle, same
+  //        direction) — distinct from absorption, which is an opposing
+  //        side stopping the move; this is the move running out of its
+  //        own steam.
   let lowestIdx = 0, highestIdx = 0;
   for (let i = 1; i < cs.length; i++) {
     if (cs[i].low < cs[lowestIdx].low) lowestIdx = i;
     if (cs[i].high > cs[highestIdx].high) highestIdx = i;
   }
 
+  const pocSeries = []; // { price, pos } per candle index, or null if no trade data
+  let prevDelta = null, prevRange = null, prevDir = null;
+
   cs.forEach((c, i) => {
-    if (!c.trades || !c.trades.length) return;
     const range = c.high - c.low || (tickSize || 1);
+    const cDelta = c.buyVol - c.sellVol;
+    const cTotalVol = c.buyVol + c.sellVol;
+    const isBullClose = c.close >= c.open;
+    const bodySize = Math.abs(c.close - c.open);
+    const bodyPct = bodySize / range;
+    const deltaRatio = cTotalVol > 0 ? Math.abs(cDelta) / cTotalVol : 0;
+    const thisDir = cDelta > 0 ? 1 : (cDelta < 0 ? -1 : 0);
+
+    // DELTA vs CLOSE DIRECTION: does the candle's overall delta actually
+    // agree with which way it closed? A green candle built on net SELLING
+    // (negative delta) or a red candle built on net BUYING (positive
+    // delta) is a classic order-flow divergence — the printed price
+    // direction doesn't match who was really in control, often flagging a
+    // move built on thin/passive participation that's vulnerable to
+    // reversal. This runs on every candle regardless of trade-level detail
+    // since it only needs buyVol/sellVol/open/close.
+    if (cTotalVol > 0 && Math.abs(cDelta) > cTotalVol * 0.15) {
+      if (isBullClose && cDelta < 0) {
+        bear += 1; reversalSignals += 1;
+        ofNotes.push('delta divergence: green candle, net selling');
+      } else if (!isBullClose && cDelta > 0) {
+        bull += 1; reversalSignals += 1;
+        ofNotes.push('delta divergence: red candle, net buying');
+      }
+    }
+
+    if (!c.trades || !c.trades.length) {
+      pocSeries.push(null);
+      prevDelta = cDelta; prevRange = range; prevDir = thisDir;
+      return;
+    }
+
     const volMap = new Map(), buyMap = new Map(), sellMap = new Map();
     for (const t of c.trades) {
       const key = formatPrice(t.price);
@@ -3996,28 +4047,33 @@ function evalFpPanelTrend() {
     let pocPrice = c.low, pocVol = 0;
     for (const [k, v] of volMap) if (v > pocVol) { pocVol = v; pocPrice = parseFloat(k); }
     const pocPos = (pocPrice - c.low) / range;
-    const isBullClose = c.close >= c.open;
+    pocSeries.push({ price: pocPrice, pos: pocPos });
+
     if (pocPos <= 0.25 && isBullClose) bull += 1;
     if (pocPos >= 0.75 && !isBullClose) bear += 1;
 
-    // v96: Effort vs Result (delta-body divergence) on EVERY visible
-    // candle, not just the current forming one — the same check
-    // evalFootprint() does for the live candle alone. Aggressive volume
-    // that fails to move price is a footprint tell wherever it happens in
-    // the view, and strong effort THAT does move price is conviction.
-    const bodySize  = Math.abs(c.close - c.open);
-    const bodyPct   = bodySize / range;
-    const cDelta    = c.buyVol - c.sellVol;
-    const cTotalVol = c.buyVol + c.sellVol;
-    const deltaRatio = cTotalVol > 0 ? Math.abs(cDelta) / cTotalVol : 0;
+    // POC BEHAVIOR: migrating vs. pinned, compared against the nearest
+    // preceding candle that actually had trade data (skips gaps cleanly).
+    let priorPoc = null;
+    for (let k = i - 1; k >= 0; k--) { if (pocSeries[k]) { priorPoc = pocSeries[k]; break; } }
+    if (priorPoc) {
+      const pocMove = pocPrice - priorPoc.price;
+      if (pocMove > range * 0.15) { bull += 1; continuationSignals += 1; ofNotes.push('POC migrating up'); }
+      else if (pocMove < -range * 0.15) { bear += 1; continuationSignals += 1; ofNotes.push('POC migrating down'); }
+      else if (Math.abs(pocMove) < range * 0.05) {
+        // POC recycling to the same price across candles = a real magnet —
+        // informational (doesn't push the score either way by itself).
+        ofNotes.push('POC pinned @ ' + formatPrice(pocPrice));
+      }
+    }
+
+    // Effort vs Result (delta-body divergence) on every visible candle.
     if (deltaRatio > 0.25 && bodyPct < 0.20) {
-      // High effort, tiny result — the aggressive side got absorbed
-      if (cDelta > 0) { bear += 1; reversalSignals += 1; notes.push('buyers failed @ ' + formatPrice(c.close)); }
-      else { bull += 1; reversalSignals += 1; notes.push('sellers failed @ ' + formatPrice(c.close)); }
+      if (cDelta > 0) { bear += 1; reversalSignals += 1; ofNotes.push('buyers failed @ ' + formatPrice(c.close)); }
+      else { bull += 1; reversalSignals += 1; ofNotes.push('sellers failed @ ' + formatPrice(c.close)); }
     } else if (deltaRatio > 0.35 && bodyPct > 0.50) {
-      // High effort AND strong result in the same direction = conviction
-      if (cDelta > 0 && isBullClose) { bull += 1; continuationSignals += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
-      else if (cDelta < 0 && !isBullClose) { bear += 1; continuationSignals += 1; notes.push('conviction @ ' + formatPrice(c.close)); }
+      if (cDelta > 0 && isBullClose) { bull += 1; continuationSignals += 1; ofNotes.push('conviction @ ' + formatPrice(c.close)); }
+      else if (cDelta < 0 && !isBullClose) { bear += 1; continuationSignals += 1; ofNotes.push('conviction @ ' + formatPrice(c.close)); }
     }
 
     // Sorted price levels (ascending) so we can tell WHERE imbalances sit
@@ -4046,10 +4102,10 @@ function evalFpPanelTrend() {
     // bearish reversal clue). Bid-at-high / ask-at-low read as
     // continuation strength in the move's own direction — real, but
     // weighted a little lighter than the reversal read.
-    if (bidLowThird >= 2) { bull += 2; reversalSignals += 1; notes.push('bid imbalance @ low'); }
-    else if (bidHighThird >= 2) { bull += 1; continuationSignals += 1; notes.push('bid imbalance @ high'); }
-    if (askHighThird >= 2) { bear += 2; reversalSignals += 1; notes.push('ask imbalance @ high'); }
-    else if (askLowThird >= 2) { bear += 1; continuationSignals += 1; notes.push('ask imbalance @ low'); }
+    if (bidLowThird >= 2) { bull += 2; reversalSignals += 1; ofNotes.push('bid imbalance @ low'); }
+    else if (bidHighThird >= 2) { bull += 1; continuationSignals += 1; ofNotes.push('bid imbalance @ high'); }
+    if (askHighThird >= 2) { bear += 2; reversalSignals += 1; ofNotes.push('ask imbalance @ high'); }
+    else if (askLowThird >= 2) { bear += 1; continuationSignals += 1; ofNotes.push('ask imbalance @ low'); }
 
     // Stacked run: 3+ consecutive price levels with the same imbalance
     // type is a materially stronger footprint tell than the same count
@@ -4060,21 +4116,40 @@ function evalFpPanelTrend() {
       if (curRun === 'bid') maxBidRun = Math.max(maxBidRun, runLen);
       if (curRun === 'ask') maxAskRun = Math.max(maxAskRun, runLen);
     });
-    if (maxBidRun >= 3) { bull += 2; notes.push(maxBidRun + '-stacked bid imbalance'); }
-    if (maxAskRun >= 3) { bear += 2; notes.push(maxAskRun + '-stacked ask imbalance'); }
+    const hasStackedBid = maxBidRun >= 3, hasStackedAsk = maxAskRun >= 3;
+    if (hasStackedBid) { bull += 2; ofNotes.push(maxBidRun + '-stacked bid imbalance'); }
+    if (hasStackedAsk) { bear += 2; ofNotes.push(maxAskRun + '-stacked ask imbalance'); }
 
-    // Absorption at the lowest-low candle in view: heavy buying soaking up
-    // sells at the low without further downside = bullish reversal clue.
-    if (i === lowestIdx) {
+    // ABSORPTION: the stacked imbalance disagrees with the candle's own
+    // close direction — e.g. a red/down candle that still shows a stacked
+    // BID imbalance means buyers were genuinely absorbing sellers beneath
+    // the surface, even though price nominally closed lower. Checked on
+    // every candle now. Falls back to the simpler one-sided-volume read
+    // at the window's low/high for thin-data candles where per-level
+    // imbalance can't be computed reliably.
+    if (hasStackedBid && !isBullClose) {
+      bull += 2; reversalSignals += 1;
+      ofNotes.push('absorption @ ' + formatPrice(c.low) + ' (bid held vs red close)');
+    } else if (hasStackedAsk && isBullClose) {
+      bear += 2; reversalSignals += 1;
+      ofNotes.push('distribution @ ' + formatPrice(c.high) + ' (ask held vs green close)');
+    } else if (i === lowestIdx) {
       const tot = c.buyVol + c.sellVol;
-      if (tot > 0 && c.buyVol / tot > 0.6) { bull += 2; reversalSignals += 1; notes.push('absorption @ low'); }
-    }
-    // Distribution at the highest-high candle in view: heavy selling into
-    // the highs without further upside = bearish reversal clue.
-    if (i === highestIdx) {
+      if (tot > 0 && c.buyVol / tot > 0.6) { bull += 2; reversalSignals += 1; ofNotes.push('absorption @ low'); }
+    } else if (i === highestIdx) {
       const tot = c.buyVol + c.sellVol;
-      if (tot > 0 && c.sellVol / tot > 0.6) { bear += 2; reversalSignals += 1; notes.push('distribution @ high'); }
+      if (tot > 0 && c.sellVol / tot > 0.6) { bear += 2; reversalSignals += 1; ofNotes.push('distribution @ high'); }
     }
+
+    // EXHAUSTION: this candle continues the SAME direction as the prior
+    // one, but with meaningfully less delta AND less range — the trend's
+    // own aggressor is fading, not being stopped by an opposing side.
+    if (prevDelta !== null && prevDir !== null && thisDir !== 0 && thisDir === prevDir &&
+        Math.abs(cDelta) < Math.abs(prevDelta) * 0.6 && range < prevRange * 0.85) {
+      if (thisDir > 0) { bear += 1; reversalSignals += 1; ofNotes.push('exhaustion (buy effort fading)'); }
+      else { bull += 1; reversalSignals += 1; ofNotes.push('exhaustion (sell effort fading)'); }
+    }
+    prevDelta = cDelta; prevRange = range; prevDir = thisDir;
   });
 
   // v100/v101: "coiled spring" breakout/breakdown detector. User-observed
@@ -4146,21 +4221,21 @@ function evalFpPanelTrend() {
       if (askCleared && !bidCleared) {
         if (cvdVolumeConfirms('bull')) {
           breakoutSignal = 'bull'; bull += 3;
-          if (vpCtx && vpCtx.isLVN) { bull += 1; notes.push('squeeze + ask wall cleared + CVD confirms + LVN ahead'); }
-          else if (vpCtx && vpCtx.isHVN) notes.push('squeeze + ask wall cleared + CVD confirms, but into HVN \u2014 watch for re-absorption');
-          else notes.push('squeeze + ask wall cleared + CVD confirms');
-        } else notes.push('ask wall cleared, awaiting CVD volume confirmation');
+          if (vpCtx && vpCtx.isLVN) { bull += 1; ofNotes.push('squeeze + ask wall cleared + CVD confirms + LVN ahead'); }
+          else if (vpCtx && vpCtx.isHVN) ofNotes.push('squeeze + ask wall cleared + CVD confirms, but into HVN \u2014 watch for re-absorption');
+          else ofNotes.push('squeeze + ask wall cleared + CVD confirms');
+        } else ofNotes.push('ask wall cleared, awaiting CVD volume confirmation');
       } else if (bidCleared && !askCleared) {
         if (cvdVolumeConfirms('bear')) {
           breakoutSignal = 'bear'; bear += 3;
-          if (vpCtx && vpCtx.isLVN) { bear += 1; notes.push('squeeze + bid wall cleared + CVD confirms + LVN below'); }
-          else if (vpCtx && vpCtx.isHVN) notes.push('squeeze + bid wall cleared + CVD confirms, but into HVN \u2014 watch for re-absorption');
-          else notes.push('squeeze + bid wall cleared + CVD confirms');
-        } else notes.push('bid wall cleared, awaiting CVD volume confirmation');
+          if (vpCtx && vpCtx.isLVN) { bear += 1; ofNotes.push('squeeze + bid wall cleared + CVD confirms + LVN below'); }
+          else if (vpCtx && vpCtx.isHVN) ofNotes.push('squeeze + bid wall cleared + CVD confirms, but into HVN \u2014 watch for re-absorption');
+          else ofNotes.push('squeeze + bid wall cleared + CVD confirms');
+        } else ofNotes.push('bid wall cleared, awaiting CVD volume confirmation');
       } else if (askCleared && bidCleared) {
-        notes.push('squeeze + walls clearing both sides');
+        ofNotes.push('squeeze + walls clearing both sides');
       } else {
-        notes.push('coiled \u2014 watching for a wall to clear');
+        ofNotes.push('coiled \u2014 watching for a wall to clear');
       }
     }
   }
@@ -4171,6 +4246,7 @@ function evalFpPanelTrend() {
   else if (continuationSignals >= 2 && continuationSignals > reversalSignals) pattern = 'continuation';
 
   const v = scoreToVerdict(bull, bear, 12);
+  const notes = ofNotes.concat(genNotes); // order-flow reads lead, generic stats fill remaining slots
   return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014', pattern };
 }
 
@@ -4188,23 +4264,28 @@ function evalCvdPanelTrend() {
 
   let bull = 0, bear = 0;
   let reversalSignals = 0, continuationSignals = 0;
-  const notes = [];
+  // v102: order-flow-native reads (delta divergence, absorption,
+  // exhaustion, swing/price divergence, imbalance-style tells) are
+  // tracked separately from generic/macro-statistical notes, so the
+  // displayed note always leads with the more diagnostic read instead of
+  // whichever check happened to run first.
+  const ofNotes = [], genNotes = [];
 
   // 1) Net cumulative delta across the WHOLE visible window (macro bias)
   const deltas = bars.map(c => c.buyVol - c.sellVol);
   const cumNet = deltas.reduce((a, b) => a + b, 0);
   const avgAbs = deltas.reduce((a, b) => a + Math.abs(b), 0) / bars.length || 1;
   const macroThresh = avgAbs * bars.length * 0.15;
-  if (cumNet > macroThresh) { bull += 2; notes.push('CVD net +' + cumNet.toFixed(0) + ' over view'); }
-  else if (cumNet < -macroThresh) { bear += 2; notes.push('CVD net ' + cumNet.toFixed(0) + ' over view'); }
-  else notes.push('CVD flat over view');
+  if (cumNet > macroThresh) { bull += 2; genNotes.push('CVD net +' + cumNet.toFixed(0) + ' over view'); }
+  else if (cumNet < -macroThresh) { bear += 2; genNotes.push('CVD net ' + cumNet.toFixed(0) + ' over view'); }
+  else genNotes.push('CVD flat over view');
 
   // 2) How many of the visible bars lean buy vs sell (breadth of
   // participation — how many bars agree, regardless of size)
   const buyBars = deltas.filter(d => d > 0).length;
   const sellBars = deltas.filter(d => d < 0).length;
-  if (buyBars > sellBars * 1.5) { bull += 1; notes.push(buyBars + '/' + bars.length + ' bars buy-leaning'); }
-  else if (sellBars > buyBars * 1.5) { bear += 1; notes.push(sellBars + '/' + bars.length + ' bars sell-leaning'); }
+  if (buyBars > sellBars * 1.5) { bull += 1; genNotes.push(buyBars + '/' + bars.length + ' bars buy-leaning'); }
+  else if (sellBars > buyBars * 1.5) { bear += 1; genNotes.push(sellBars + '/' + bars.length + ' bars sell-leaning'); }
 
   // 2b) Magnitude-weighted breadth — a different read than the count above:
   // intensity of participation, not headcount. A few oversized bars on one
@@ -4215,8 +4296,8 @@ function evalCvdPanelTrend() {
   const magTot = buyMag + sellMag;
   if (magTot > 0) {
     const magRatio = buyMag / magTot;
-    if (magRatio > 0.62) { bull += 1; notes.push('buy volume dominates by size'); }
-    else if (magRatio < 0.38) { bear += 1; notes.push('sell volume dominates by size'); }
+    if (magRatio > 0.62) { bull += 1; genNotes.push('buy volume dominates by size'); }
+    else if (magRatio < 0.38) { bear += 1; genNotes.push('sell volume dominates by size'); }
   }
 
   // 3) Price vs. CVD divergence across the SAME full window: did price and
@@ -4225,8 +4306,8 @@ function evalCvdPanelTrend() {
   let cum = 0; const cumSeries = deltas.map(d => (cum += d));
   const cvdMove = cumSeries[cumSeries.length - 1] - cumSeries[0];
   const priceRange = Math.max(...bars.map(b => b.high)) - Math.min(...bars.map(b => b.low)) || (tickSize || 1);
-  if (priceMove < -priceRange * 0.15 && cvdMove > macroThresh) { bull += 2; reversalSignals += 1; notes.push('bullish divergence vs price'); }
-  else if (priceMove > priceRange * 0.15 && cvdMove < -macroThresh) { bear += 2; reversalSignals += 1; notes.push('bearish divergence vs price'); }
+  if (priceMove < -priceRange * 0.15 && cvdMove > macroThresh) { bull += 2; reversalSignals += 1; ofNotes.push('bullish divergence vs price'); }
+  else if (priceMove > priceRange * 0.15 && cvdMove < -macroThresh) { bear += 2; reversalSignals += 1; ofNotes.push('bearish divergence vs price'); }
 
   // 3b) Swing-point divergence — not just the whole-window net move, but
   // the classic footprint-trader tell: a new price swing high that ISN'T
@@ -4245,11 +4326,11 @@ function evalCvdPanelTrend() {
   const swingLows  = findSwingPoints(bars.map(b => b.low), false);
   if (swingHighs.length >= 2) {
     const a = swingHighs[swingHighs.length - 2], b = swingHighs[swingHighs.length - 1];
-    if (b.v > a.v && cumSeries[b.i] < cumSeries[a.i]) { bear += 2; reversalSignals += 1; notes.push('swing-high divergence'); }
+    if (b.v > a.v && cumSeries[b.i] < cumSeries[a.i]) { bear += 2; reversalSignals += 1; ofNotes.push('swing-high divergence'); }
   }
   if (swingLows.length >= 2) {
     const a = swingLows[swingLows.length - 2], b = swingLows[swingLows.length - 1];
-    if (b.v < a.v && cumSeries[b.i] > cumSeries[a.i]) { bull += 2; reversalSignals += 1; notes.push('swing-low divergence'); }
+    if (b.v < a.v && cumSeries[b.i] > cumSeries[a.i]) { bull += 2; reversalSignals += 1; ofNotes.push('swing-low divergence'); }
   }
 
   // 4) Shape of the cumulative CVD line itself — swing structure (rising
@@ -4261,23 +4342,21 @@ function evalCvdPanelTrend() {
   for (let i = 1; i < cvdPeaks.length; i++) { if (cvdPeaks[i] > cvdPeaks[i - 1]) risingPeaks++; else if (cvdPeaks[i] < cvdPeaks[i - 1]) fallingPeaks++; }
   for (let i = 1; i < cvdTroughs.length; i++) { if (cvdTroughs[i] > cvdTroughs[i - 1]) risingTroughs++; else if (cvdTroughs[i] < cvdTroughs[i - 1]) fallingTroughs++; }
   if (risingPeaks >= fallingPeaks && risingTroughs > fallingTroughs && (cvdPeaks.length > 1 || cvdTroughs.length > 1)) {
-    bull += 1; continuationSignals += 1; notes.push('CVD line HH/HL');
+    bull += 1; continuationSignals += 1; genNotes.push('CVD line HH/HL');
   } else if (fallingPeaks >= risingPeaks && fallingTroughs > risingTroughs && (cvdPeaks.length > 1 || cvdTroughs.length > 1)) {
-    bear += 1; continuationSignals += 1; notes.push('CVD line LH/LL');
+    bear += 1; continuationSignals += 1; genNotes.push('CVD line LH/LL');
   }
 
-  // 5) Slope acceleration/deceleration — is the delta building steam in the
-  // second half of the view vs the first half, or fading? Different from
-  // the recent-window helper below, which compares magnitude to a longer
-  // baseline rather than rate of change within this window.
+  // 5) Slope acceleration — is the delta building steam in the second half
+  // of the view vs the first half? (Deceleration is now handled per-bar,
+  // as real exhaustion, in section 6c below — a "decelerating" note with
+  // no score behind it wasn't pulling any weight.)
   const halfIdx = Math.floor(bars.length / 2) || 1;
   const firstHalfAvg = deltas.slice(0, halfIdx).reduce((a, b) => a + b, 0) / halfIdx;
   const secondHalfAvg = deltas.slice(halfIdx).reduce((a, b) => a + b, 0) / (bars.length - halfIdx || 1);
   if (secondHalfAvg !== 0 && Math.sign(secondHalfAvg) === Math.sign(firstHalfAvg) && Math.abs(secondHalfAvg) > Math.abs(firstHalfAvg) * 1.4) {
-    if (secondHalfAvg > 0) { bull += 1; continuationSignals += 1; notes.push('CVD accelerating up'); }
-    else { bear += 1; continuationSignals += 1; notes.push('CVD accelerating down'); }
-  } else if (Math.abs(secondHalfAvg) < Math.abs(firstHalfAvg) * 0.6) {
-    notes.push('CVD decelerating');
+    if (secondHalfAvg > 0) { bull += 1; continuationSignals += 1; genNotes.push('CVD accelerating up'); }
+    else { bear += 1; continuationSignals += 1; genNotes.push('CVD accelerating down'); }
   }
 
   // 6) Consecutive same-direction bar runs — several bars in a row all
@@ -4290,8 +4369,8 @@ function evalCvdPanelTrend() {
     if (curSign === 1) maxBuyRun = Math.max(maxBuyRun, runLen);
     if (curSign === -1) maxSellRun = Math.max(maxSellRun, runLen);
   });
-  if (maxBuyRun >= 4) { bull += 1; continuationSignals += 1; notes.push(maxBuyRun + '-bar buy streak'); }
-  if (maxSellRun >= 4) { bear += 1; continuationSignals += 1; notes.push(maxSellRun + '-bar sell streak'); }
+  if (maxBuyRun >= 4) { bull += 1; continuationSignals += 1; genNotes.push(maxBuyRun + '-bar buy streak'); }
+  if (maxSellRun >= 4) { bear += 1; continuationSignals += 1; genNotes.push(maxSellRun + '-bar sell streak'); }
 
   // 6b) Hourly breakdown — the same :00 boundary segments the panel prints
   // a net-delta figure at (the dashed vertical separators + "+2.3k"/"-1.1k"
@@ -4308,13 +4387,54 @@ function evalCvdPanelTrend() {
   if (hourGroups.length >= 2) {
     const hourNets = hourGroups.map(g => g.reduce((s, c) => s + (c.buyVol - c.sellVol), 0));
     const posHours = hourNets.filter(v => v > 0).length, negHours = hourNets.filter(v => v < 0).length;
-    if (posHours > negHours * 1.5) { bull += 1; continuationSignals += 1; notes.push(posHours + '/' + hourNets.length + ' hours net buy'); }
-    else if (negHours > posHours * 1.5) { bear += 1; continuationSignals += 1; notes.push(negHours + '/' + hourNets.length + ' hours net sell'); }
+    if (posHours > negHours * 1.5) { bull += 1; continuationSignals += 1; genNotes.push(posHours + '/' + hourNets.length + ' hours net buy'); }
+    else if (negHours > posHours * 1.5) { bear += 1; continuationSignals += 1; genNotes.push(negHours + '/' + hourNets.length + ' hours net sell'); }
     const lastHourNet = hourNets[hourNets.length - 1];
     if (Math.abs(lastHourNet) > avgAbs * 2) {
-      if (lastHourNet > 0) { bull += 1; notes.push('latest hour strong buy'); }
-      else { bear += 1; notes.push('latest hour strong sell'); }
+      if (lastHourNet > 0) { bull += 1; genNotes.push('latest hour strong buy'); }
+      else { bear += 1; genNotes.push('latest hour strong sell'); }
     }
+  }
+
+  // 6c) Per-bar reads over the RECENT tail of the window — the same
+  // questions the FP panel now asks of each candle, asked here of each
+  // CVD bar: does this bar's delta agree with its own close direction
+  // (divergence)? Did heavy delta effort fail to move price (absorption)?
+  // Is the trend's own aggressor fading bar-over-bar (exhaustion)? Scoped
+  // to the last 8 bars (or fewer if the window's shorter) so this stays a
+  // "recent" read rather than re-litigating the whole 48-bar history.
+  const tailStart = Math.max(0, bars.length - 8);
+  let prevBarDelta = null, prevBarRange = null, prevBarDir = null;
+  for (let i = tailStart; i < bars.length; i++) {
+    const bc = bars[i];
+    const bRange = bc.high - bc.low || (tickSize || 1);
+    const bDelta = bc.buyVol - bc.sellVol;
+    const bTotalVol = bc.buyVol + bc.sellVol;
+    const bIsBullClose = bc.close >= bc.open;
+    const bBodyPct = Math.abs(bc.close - bc.open) / bRange;
+    const bDeltaRatio = bTotalVol > 0 ? Math.abs(bDelta) / bTotalVol : 0;
+    const bDir = bDelta > 0 ? 1 : (bDelta < 0 ? -1 : 0);
+
+    // Delta vs close direction, per bar
+    if (bTotalVol > 0 && Math.abs(bDelta) > bTotalVol * 0.15) {
+      if (bIsBullClose && bDelta < 0) { bear += 1; reversalSignals += 1; ofNotes.push('bar delta divergence (green, net sell)'); }
+      else if (!bIsBullClose && bDelta > 0) { bull += 1; reversalSignals += 1; ofNotes.push('bar delta divergence (red, net buy)'); }
+    }
+
+    // Absorption: heavy delta effort, little price range to show for it
+    if (bDeltaRatio > 0.3 && bBodyPct < 0.20 && bTotalVol > avgAbs * 0.5) {
+      if (bDelta > 0) { bear += 1; reversalSignals += 1; ofNotes.push('bar absorption (buy effort stalled)'); }
+      else { bull += 1; reversalSignals += 1; ofNotes.push('bar absorption (sell effort stalled)'); }
+    }
+
+    // Exhaustion: same direction as the prior bar, but fading delta AND
+    // fading range — the aggressor running out of steam on its own.
+    if (prevBarDelta !== null && bDir !== 0 && bDir === prevBarDir &&
+        Math.abs(bDelta) < Math.abs(prevBarDelta) * 0.6 && bRange < prevBarRange * 0.85) {
+      if (bDir > 0) { bear += 1; reversalSignals += 1; ofNotes.push('bar exhaustion (buy fading)'); }
+      else { bull += 1; reversalSignals += 1; ofNotes.push('bar exhaustion (sell fading)'); }
+    }
+    prevBarDelta = bDelta; prevBarRange = bRange; prevBarDir = bDir;
   }
 
   // 7) Fold in the narrow recent-window helpers (fast-reacting confirmation)
@@ -4322,15 +4442,15 @@ function evalCvdPanelTrend() {
   const div   = evalCVDDivergence();
   bull += trend.bull + div.bull;
   bear += trend.bear + div.bear;
-  if (trend.bull || trend.bear) notes.push('recent ' + trend.note);
-  if (div.bull || div.bear) notes.push(div.note);
+  if (trend.bull || trend.bear) ofNotes.push('recent ' + trend.note);
+  if (div.bull || div.bear) ofNotes.push(div.note);
 
   // 8) Live/forming bar's own delta, for immediacy
   if (currentCandle) {
     const liveDelta = currentCandle.buyVol - currentCandle.sellVol;
     if (Math.abs(liveDelta) > 0.01) {
-      if (liveDelta > 0) { bull += 1; notes.push('live \u0394+' + liveDelta.toFixed(1)); }
-      else { bear += 1; notes.push('live \u0394' + liveDelta.toFixed(1)); }
+      if (liveDelta > 0) { bull += 1; ofNotes.push('live \u0394+' + liveDelta.toFixed(1)); }
+      else { bear += 1; ofNotes.push('live \u0394' + liveDelta.toFixed(1)); }
     }
   }
 
@@ -4338,6 +4458,7 @@ function evalCvdPanelTrend() {
   let pattern = null;
   if (reversalSignals >= 2 && reversalSignals > continuationSignals) pattern = 'reversal';
   else if (continuationSignals >= 2 && continuationSignals > reversalSignals) pattern = 'continuation';
+  const notes = ofNotes.concat(genNotes); // order-flow reads lead, generic stats fill remaining slots
   return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014', pattern };
 }
 
@@ -4354,6 +4475,12 @@ function evalVpPanelTrend() {
   if (!volumeProfileData.length || !priceCenter) return { score: 0, label: 'WAITING', note: 'no data yet', pattern: null };
   const rows = volumeProfileData; // sorted price descending
   let reversalSignals = 0, continuationSignals = 0;
+  // v102: order-flow-native reads (absorption/distribution at a level,
+  // delta skew, growth momentum, POC behavior over time) are tracked
+  // separately from generic/location notes (above/below a level, distance
+  // travelled), so the displayed note always leads with the more
+  // diagnostic read.
+  const ofNotes = [], genNotes = [];
 
   const totalVols = rows.map(r => (r.buy_vol || 0) + (r.sell_vol || 0));
   let pocIdx = 0;
@@ -4366,13 +4493,13 @@ function evalVpPanelTrend() {
   let vah = -Infinity, val = Infinity;
   vaSet.forEach(i => { if (rows[i].price > vah) vah = rows[i].price; if (rows[i].price < val) val = rows[i].price; });
 
-  let bull = 0, bear = 0; const notes = [];
-  if (priceCenter > vah) { bull += 2; notes.push('above VAH'); }
-  else if (priceCenter < val) { bear += 2; notes.push('below VAL'); }
-  else notes.push('inside value area');
+  let bull = 0, bear = 0;
+  if (priceCenter > vah) { bull += 2; genNotes.push('above VAH'); }
+  else if (priceCenter < val) { bear += 2; genNotes.push('below VAL'); }
+  else genNotes.push('inside value area');
 
-  if (priceCenter > pocPrice) { bull += 1; notes.push('above POC'); }
-  else if (priceCenter < pocPrice) { bear += 1; notes.push('below POC'); }
+  if (priceCenter > pocPrice) { bull += 1; genNotes.push('above POC'); }
+  else if (priceCenter < pocPrice) { bear += 1; genNotes.push('below POC'); }
 
   // Aggregate buy/sell dominance across the WHOLE 24h profile
   let totBuy = 0, totSell = 0;
@@ -4380,8 +4507,8 @@ function evalVpPanelTrend() {
   const tot = totBuy + totSell;
   if (tot > 0) {
     const ratio = totBuy / tot;
-    if (ratio > 0.58) { bull += 1; notes.push('profile buy-heavy'); }
-    else if (ratio < 0.42) { bear += 1; notes.push('profile sell-heavy'); }
+    if (ratio > 0.58) { bull += 1; ofNotes.push('profile buy-heavy'); }
+    else if (ratio < 0.42) { bear += 1; ofNotes.push('profile sell-heavy'); }
   }
 
   // How many price levels individually lean buy vs sell across the whole
@@ -4389,8 +4516,8 @@ function evalVpPanelTrend() {
   // otherwise dominate the ratio)
   const leanBuy = rows.filter(r => (r.buy_vol || 0) > (r.sell_vol || 0)).length;
   const leanSell = rows.filter(r => (r.sell_vol || 0) > (r.buy_vol || 0)).length;
-  if (leanBuy > leanSell * 1.5) { bull += 1; notes.push(leanBuy + '/' + rows.length + ' levels buy-leaning'); }
-  else if (leanSell > leanBuy * 1.5) { bear += 1; notes.push(leanSell + '/' + rows.length + ' levels sell-leaning'); }
+  if (leanBuy > leanSell * 1.5) { bull += 1; ofNotes.push(leanBuy + '/' + rows.length + ' levels buy-leaning'); }
+  else if (leanSell > leanBuy * 1.5) { bear += 1; ofNotes.push(leanSell + '/' + rows.length + ' levels sell-leaning'); }
 
   // Delta dominance AT the key levels themselves — a much sharper read than
   // the blended aggregate above. Is the single busiest price (POC) itself
@@ -4399,10 +4526,12 @@ function evalVpPanelTrend() {
   // breaking down (sell-heavy)?
   const pocRow = rows[pocIdx];
   const pocRowTot = (pocRow.buy_vol || 0) + (pocRow.sell_vol || 0);
+  let pocDominance = 0;
   if (pocRowTot > 0) {
     const pocRatio = (pocRow.buy_vol || 0) / pocRowTot;
-    if (pocRatio > 0.58) { bull += 2; notes.push('POC buy-dominant (absorption)'); }
-    else if (pocRatio < 0.42) { bear += 2; notes.push('POC sell-dominant (distribution)'); }
+    pocDominance = totalVols[pocIdx] / grand;
+    if (pocRatio > 0.58) { bull += 2; ofNotes.push('POC buy-dominant (absorption)'); }
+    else if (pocRatio < 0.42) { bear += 2; ofNotes.push('POC sell-dominant (distribution)'); }
   }
   let vahRowIdx = -1, vahDist = Infinity, valRowIdx = -1, valDist = Infinity;
   rows.forEach((r, i) => {
@@ -4413,16 +4542,16 @@ function evalVpPanelTrend() {
     const r = rows[vahRowIdx], t = (r.buy_vol || 0) + (r.sell_vol || 0);
     if (t > 0) {
       const ratio = (r.buy_vol || 0) / t;
-      if (ratio < 0.42) { bear += 1; continuationSignals += 1; notes.push('VAH holding (sell-heavy)'); }
-      else if (ratio > 0.58) { bull += 1; reversalSignals += 1; notes.push('VAH absorbed (buy-heavy)'); }
+      if (ratio < 0.42) { bear += 1; continuationSignals += 1; ofNotes.push('VAH holding (sell-heavy)'); }
+      else if (ratio > 0.58) { bull += 1; reversalSignals += 1; ofNotes.push('VAH absorbed (buy-heavy)'); }
     }
   }
   if (valRowIdx >= 0) {
     const r = rows[valRowIdx], t = (r.buy_vol || 0) + (r.sell_vol || 0);
     if (t > 0) {
       const ratio = (r.buy_vol || 0) / t;
-      if (ratio > 0.58) { bull += 1; continuationSignals += 1; notes.push('VAL holding (buy-heavy)'); }
-      else if (ratio < 0.42) { bear += 1; reversalSignals += 1; notes.push('VAL breaking (sell-heavy)'); }
+      if (ratio > 0.58) { bull += 1; continuationSignals += 1; ofNotes.push('VAL holding (buy-heavy)'); }
+      else if (ratio < 0.42) { bear += 1; reversalSignals += 1; ofNotes.push('VAL breaking (sell-heavy)'); }
     }
   }
 
@@ -4438,8 +4567,8 @@ function evalVpPanelTrend() {
     else { lowerBuy += r.buy_vol || 0; lowerSell += r.sell_vol || 0; }
   }
   const lowerTot = lowerBuy + lowerSell, upperTot = upperBuy + upperSell;
-  if (lowerTot > 0 && lowerBuy / lowerTot > 0.58) { bull += 1; notes.push('buy support building below'); }
-  if (upperTot > 0 && upperSell / upperTot > 0.58) { bear += 1; notes.push('sell resistance building above'); }
+  if (lowerTot > 0 && lowerBuy / lowerTot > 0.58) { bull += 1; ofNotes.push('buy support building below'); }
+  if (upperTot > 0 && upperSell / upperTot > 0.58) { bear += 1; ofNotes.push('sell resistance building above'); }
 
   // v96: Growth-glow momentum — which side has been actively GROWING since
   // the last refresh (the same flash the bars visually show), not just
@@ -4454,8 +4583,8 @@ function evalVpPanelTrend() {
       if ((r.buy_vol || 0) >= (r.sell_vol || 0)) growBuy++; else growSell++;
     }
   });
-  if (growBuy > growSell * 1.5 && growBuy >= 2) { bull += 1; continuationSignals += 1; notes.push('growth skew buy'); }
-  else if (growSell > growBuy * 1.5 && growSell >= 2) { bear += 1; continuationSignals += 1; notes.push('growth skew sell'); }
+  if (growBuy > growSell * 1.5 && growBuy >= 2) { bull += 1; continuationSignals += 1; ofNotes.push('growth skew buy'); }
+  else if (growSell > growBuy * 1.5 && growSell >= 2) { bear += 1; continuationSignals += 1; ofNotes.push('growth skew sell'); }
 
   // v96: Delta bar MAGNITUDE (the right-side delta bars themselves), not
   // just which way each level leans. One outsized imbalance should count
@@ -4464,23 +4593,50 @@ function evalVpPanelTrend() {
   const deltaSum = rows.reduce((s, r) => s + ((r.buy_vol || 0) - (r.sell_vol || 0)), 0);
   const deltaAbsSum = rows.reduce((s, r) => s + Math.abs((r.buy_vol || 0) - (r.sell_vol || 0)), 0) || 1;
   const deltaSkew = deltaSum / deltaAbsSum; // -1..1
-  if (deltaSkew > 0.15) { bull += 1; notes.push('delta bars skew buy'); }
-  else if (deltaSkew < -0.15) { bear += 1; notes.push('delta bars skew sell'); }
+  if (deltaSkew > 0.15) { bull += 1; ofNotes.push('delta bars skew buy'); }
+  else if (deltaSkew < -0.15) { bear += 1; ofNotes.push('delta bars skew sell'); }
+
+  // v102: POC/VAH/VAL BEHAVIOR OVER TIME — VP has no discrete candles like
+  // FP does, so instead of candle-to-candle POC migration this compares
+  // the current structure to a snapshot taken at least
+  // VP_SNAPSHOT_MIN_AGE_MS ago. Migration direction mirrors FP's "POC
+  // migrating up/down"; a shrinking POC dominance share is an
+  // exhaustion-style read — the busiest price is losing its grip on the
+  // session even though it's still nominally the busiest.
+  if (vpPrevSnapshot && (nowTs - vpPrevSnapshot.ts) >= VP_SNAPSHOT_MIN_AGE_MS) {
+    const spanForPoc = (vah - val) || 1;
+    const pocMove = pocPrice - vpPrevSnapshot.pocPrice;
+    if (pocMove > spanForPoc * 0.05) { bull += 1; continuationSignals += 1; ofNotes.push('POC migrating up over time'); }
+    else if (pocMove < -spanForPoc * 0.05) { bear += 1; continuationSignals += 1; ofNotes.push('POC migrating down over time'); }
+    else ofNotes.push('POC pinned over time @ ' + pocPrice.toFixed(tickDecimals));
+
+    if (vpPrevSnapshot.pocDominance > 0 && pocDominance < vpPrevSnapshot.pocDominance * 0.75) {
+      reversalSignals += 1;
+      ofNotes.push('POC dominance fading (auction losing conviction)');
+    }
+    const vahMove = vah - vpPrevSnapshot.vah, valMove = val - vpPrevSnapshot.val;
+    if (vahMove > spanForPoc * 0.05 && valMove > spanForPoc * 0.05) { bull += 1; continuationSignals += 1; ofNotes.push('value area migrating up'); }
+    else if (vahMove < -spanForPoc * 0.05 && valMove < -spanForPoc * 0.05) { bear += 1; continuationSignals += 1; ofNotes.push('value area migrating down'); }
+  }
+  if (!vpPrevSnapshot || (nowTs - vpPrevSnapshot.ts) >= VP_SNAPSHOT_MIN_AGE_MS) {
+    vpPrevSnapshot = { pocPrice, vah, val, pocDominance, ts: nowTs };
+  }
 
   const span = (vah - val) || 1;
   const distVAH = Math.abs(priceCenter - vah) / span, distVAL = Math.abs(priceCenter - val) / span;
-  if (Math.min(distVAH, distVAL) < 0.05) notes.push('near VA edge');
+  if (Math.min(distVAH, distVAL) < 0.05) genNotes.push('near VA edge');
 
   // Distance already travelled from POC, as informational context — an
   // extended move away from POC reads differently than a fresh break,
   // even though "far from POC" isn't inherently bullish or bearish by itself.
   const pocDistPct = Math.abs(priceCenter - pocPrice) / span;
-  if (pocDistPct > 0.5) notes.push('extended ' + (pocDistPct * 100).toFixed(0) + '% from POC');
+  if (pocDistPct > 0.5) genNotes.push('extended ' + (pocDistPct * 100).toFixed(0) + '% from POC');
 
   const v = scoreToVerdict(bull, bear, 12);
   let pattern = null;
   if (reversalSignals >= 2 && reversalSignals > continuationSignals) pattern = 'reversal';
   else if (continuationSignals >= 2 && continuationSignals > reversalSignals) pattern = 'continuation';
+  const notes = ofNotes.concat(genNotes); // order-flow reads lead, generic location notes fill remaining slots
   return { score: v.score, label: v.label, note: notes.slice(0, 4).join(' \u00B7 ') || '\u2014', pattern };
 }
 
@@ -5211,7 +5367,7 @@ function detectMarketPhase(conditions) {
   const absorbInactive   = !absorb || (absorb.bull===0 && absorb.bear===0);
   const recentGhostWhale = ghostOrders.some(g => g.isWhale && (Date.now()-g.endTime)<10000);
   const obpBidRatio = (() => {
-    let bid=0, ask=0; const half=(obRange||500)/2, lo=(priceCenter||0)-half, hi=(priceCenter||0)+half;
+    let bid=0, ask=0; const half=(obRange||OB_RANGE_DEFAULT)/2, lo=(priceCenter||0)-half, hi=(priceCenter||0)+half;
     for (const k in orderBook.bids) { const p=+k; if(p>=lo&&p<=hi) bid+=orderBook.bids[k]; }
     for (const k in orderBook.asks) { const p=+k; if(p>=lo&&p<=hi) ask+=orderBook.asks[k]; }
     const tot=bid+ask; return tot>0?bid/tot:0.5;
@@ -6122,7 +6278,10 @@ imbalanceInput.oninput      = e => { imbalanceRatio = parseFloat(e.target.value)
 rangeFromInput.oninput      = updateRangeDelta;
 rangeToInput.oninput        = updateRangeDelta;
 document.getElementById('deltaWindow').oninput     = e => { deltaWindowSec = parseInt(e.target.value); };
-document.getElementById('obRangeInput').oninput    = e => { obRange = parseInt(e.target.value) || 500; document.getElementById('obRangeDisplay').innerText = obRange; };
+document.getElementById('obRangeInput').oninput    = e => { const v = parseInt(e.target.value); obRange = (v > 0) ? v : OB_RANGE_DEFAULT; document.getElementById('obRangeDisplay').innerText = obRange; };
+// Blank/invalid field on blur snaps back to the default, and the label/obRange sync once at startup
+document.getElementById('obRangeInput').addEventListener('change', e => { if (!(parseInt(e.target.value) > 0)) e.target.value = OB_RANGE_DEFAULT; e.target.oninput({ target: e.target }); });
+document.getElementById('obRangeInput').oninput({ target: document.getElementById('obRangeInput') });
 resetDeltaBtn.onclick       = () => { delta = 0; deltaHistory = []; deltaBox.innerText = 'Delta: 0'; };
 modeToggle.onclick          = () => { mode = mode === 'FIXED' ? 'AUTO' : 'FIXED'; modeToggle.innerText = 'Mode: ' + mode; if (mode === 'FIXED') DEPTH_LEVELS = BASE_DEPTH; };
 fpLogWindowInput.oninput    = e => { const v = parseInt(e.target.value); if (v >= 1 && v <= 60) { fpLogWindowMs = v * 60000; fpPeriodStartTime = Date.now(); fpLogNextTime = nextClockBoundary(fpLogWindowMs); } };
