@@ -696,7 +696,7 @@ table#whaleTable tbody td.wt-dist  { text-align: right; color: #44667a; font-siz
     </div>
     <div class="panel-collapsible" id="obPressureWrap-body" style="max-height:300px;">
       <div id="obPressurePanel">
-        <div class="ob-title">Order Book Pressure &nbsp;|&nbsp;<span id="obRangeLabel" style="font-size:9px;color:#7a8a9a;">Range: <span id="obRangeDisplay">500</span> &#177;</span></div>
+        <div class="ob-title">Order Book Pressure &nbsp;|&nbsp;<span id="obRangeLabel" style="font-size:9px;color:#7a8a9a;">Range: <span id="obRangeDisplay">3000</span> &#177;</span></div>
         <div class="ob-row">
           <span id="obBidLabel" style="color:#00ff88;">BID</span>
           <span id="obBidSize"  style="color:#00ff88;">&mdash;</span>
@@ -945,7 +945,8 @@ let tickSize = 0.01, tickDecimals = 2;
 let heatmapData = {}, maxHeat = 1, footprintData = {}, strongZones = {}, maxFootprint = 1, footprintThreshold = 2;
 let lastUpdateTime = Date.now();
 let cvdData = [], cvdInterval = 60000, lastCVDTime = 0, cvdBuyTemp = 0, cvdSellTemp = 0;
-let obRange = 3000;
+const OB_RANGE_DEFAULT = 3000;
+let obRange = OB_RANGE_DEFAULT;
 let depthBackoff = WS_BACKOFF_BASE, tradesBackoff = WS_BACKOFF_BASE;
 let plrCycleCount = 0, plrCurrentState = "", plrPendingState = "", plrLastResult = null;
 let fpLog = [], fpLogWindowMs = 15 * 60000, fpPeriodTrades = [], fpPeriodStartTime = Date.now(), fpLogNextTime;
@@ -1798,7 +1799,7 @@ function renderFpMarkers(ctx, w, h, minPrice, maxPrice, yScale) {
   function priceY(p) { return h - ((p - minPrice) * yScale); }
   function levelOpacity(price) {
     const dist = Math.abs(price - priceCenter);
-    const half = (obRange || 500) / 2;
+    const half = (obRange || OB_RANGE_DEFAULT) / 2;
     if (dist <= half)           return 1.0;
     if (dist > half * 3)        return 0.0;
     return 1.0 - (dist - half) / (half * 2);
@@ -1852,7 +1853,7 @@ function renderFpMarkers(ctx, w, h, minPrice, maxPrice, yScale) {
     });
   }
 
-  const halfO = (obRange || 500) / 2,
+  const halfO = (obRange || OB_RANGE_DEFAULT) / 2,
         lo    = priceCenter - halfO,
         hi    = priceCenter + halfO;
 
@@ -5224,7 +5225,7 @@ function detectMarketPhase(conditions) {
   const absorbInactive   = !absorb || (absorb.bull===0 && absorb.bear===0);
   const recentGhostWhale = ghostOrders.some(g => g.isWhale && (Date.now()-g.endTime)<10000);
   const obpBidRatio = (() => {
-    let bid=0, ask=0; const half=(obRange||500)/2, lo=(priceCenter||0)-half, hi=(priceCenter||0)+half;
+    let bid=0, ask=0; const half=(obRange||OB_RANGE_DEFAULT)/2, lo=(priceCenter||0)-half, hi=(priceCenter||0)+half;
     for (const k in orderBook.bids) { const p=+k; if(p>=lo&&p<=hi) bid+=orderBook.bids[k]; }
     for (const k in orderBook.asks) { const p=+k; if(p>=lo&&p<=hi) ask+=orderBook.asks[k]; }
     const tot=bid+ask; return tot>0?bid/tot:0.5;
@@ -6135,7 +6136,10 @@ imbalanceInput.oninput      = e => { imbalanceRatio = parseFloat(e.target.value)
 rangeFromInput.oninput      = updateRangeDelta;
 rangeToInput.oninput        = updateRangeDelta;
 document.getElementById('deltaWindow').oninput     = e => { deltaWindowSec = parseInt(e.target.value); };
-document.getElementById('obRangeInput').oninput    = e => { obRange = parseInt(e.target.value) || 500; document.getElementById('obRangeDisplay').innerText = obRange; };
+document.getElementById('obRangeInput').oninput    = e => { const v = parseInt(e.target.value); obRange = (v > 0) ? v : OB_RANGE_DEFAULT; document.getElementById('obRangeDisplay').innerText = obRange; };
+// Blank/invalid field on blur snaps back to the default, and the label/obRange sync once at startup
+document.getElementById('obRangeInput').addEventListener('change', e => { if (!(parseInt(e.target.value) > 0)) e.target.value = OB_RANGE_DEFAULT; e.target.oninput({ target: e.target }); });
+document.getElementById('obRangeInput').oninput({ target: document.getElementById('obRangeInput') });
 resetDeltaBtn.onclick       = () => { delta = 0; deltaHistory = []; deltaBox.innerText = 'Delta: 0'; };
 modeToggle.onclick          = () => { mode = mode === 'FIXED' ? 'AUTO' : 'FIXED'; modeToggle.innerText = 'Mode: ' + mode; if (mode === 'FIXED') DEPTH_LEVELS = BASE_DEPTH; };
 fpLogWindowInput.oninput    = e => { const v = parseInt(e.target.value); if (v >= 1 && v <= 60) { fpLogWindowMs = v * 60000; fpPeriodStartTime = Date.now(); fpLogNextTime = nextClockBoundary(fpLogWindowMs); } };
